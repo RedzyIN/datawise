@@ -1,0 +1,33 @@
+# Ganti @username dengan username GitHub masing-masing anggota.
+# Aktifkan "Require review from Code Owners" di branch protection.
+
+/lib/core/                  @ARSITEK
+/lib/models/                @ARSITEK
+/lib/repositories/          @ARSITEK
+/lib/main.dart              @ARSITEK
+/pubspec.yaml               @ARSITEK
+/pubspec.lock               @ARSITEK
+/android/app/src/main/AndroidManifest.xml @ARSITEK
+
+/lib/services/auth_service.dart           @ANGGOTA_A
+/lib/features/auth/                       @ANGGOTA_A
+/lib/features/settings/settings_page.dart @ANGGOTA_A
+/test/auth/                               @ANGGOTA_A
+
+/lib/services/planner_service.dart        @ANGGOTA_B
+/lib/features/package/                    @ANGGOTA_B
+/test/package/                            @ANGGOTA_B
+
+/lib/services/usage_service.dart          @ANGGOTA_C
+/lib/features/usage_monitor/              @ANGGOTA_C
+/lib/features/settings/widgets/           @ANGGOTA_C
+/android/app/src/main/kotlin/             @ANGGOTA_C
+/test/usage_monitor/                      @ANGGOTA_C
+
+/lib/services/alert_service.dart          @ANGGOTA_D
+/lib/features/dashboard/                  @ANGGOTA_D
+/lib/features/history/                    @ANGGOTA_D
+/lib/shared/                              @ANGGOTA_D
+/assets/                                  @ANGGOTA_D
+/test/dashboard/                          @ANGGOTA_D
+/test/history/                            @ANGGOTA_D
