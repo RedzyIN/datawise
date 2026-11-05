@@ -15,7 +15,7 @@ pembacaan pemakaian data seluler, notifikasi, dan riwayat paket.
 | Muh Darmawan Alif Syahputra | Authentication | `feature/auth` | `services/auth_service.dart`, `features/auth/`, `features/settings/settings_page.dart` |
 | Fitri Ramadani | Fungsi inti (Planner & Paket) | `feature/package-planner` | `services/planner_service.dart`, `features/package/` |
 | Faatih Alfaredzy Iansyah Nusi | Android integration | `feature/usage-monitor` | `services/usage_service.dart`, `features/usage_monitor/`, `android/.../kotlin/`, `settings/widgets/` |
-| Besse Fitri Ramadani | UI/UX & Dashboard | `feature/dashboard` | `features/dashboard/`, `features/history/`, `shared/`, `services/alert_service.dart` |
+| Besse Fitri Ramadani(Nero) | UI/UX & Dashboard | `feature/dashboard` | `features/dashboard/`, `features/history/`, `shared/`, `services/alert_service.dart` |
 
 Aturan pemanggilan: **UI → Provider → Service/Repository → SQLite/Firebase/Android.**
 UI tidak memanggil Repository atau MethodChannel langsung.
@@ -24,18 +24,18 @@ UI tidak memanggil Repository atau MethodChannel langsung.
 
 ```
 lib/
-├── core/            (Arsitek)  constants, format_utils, routes, app_providers, theme, db_helper, home_shell
-├── models/          (Arsitek)  kontrak beku #3
-├── repositories/    (Arsitek)  interface + in_memory/ (minggu 1) → sqflite (minggu 2)
-├── services/        auth(A) planner(B) usage(C) alert(D)
-├── features/        auth(A) package(B) usage_monitor(C) dashboard(D) history(D) settings(A,C,D)
-├── shared/          (D)
-└── main.dart        (Arsitek)
+├── core/            (Resky)  constants, format_utils, routes, app_providers, theme, db_helper, home_shell
+├── models/          (Resky)  kontrak beku #3
+├── repositories/    (Resky)  interface + in_memory/ (minggu 1) → sqflite (minggu 2)
+├── services/        auth(Darmawan) planner(Fitri) usage(Faatih) alert(Nero)
+├── features/        auth(Darmawan) package(Fitri) usage_monitor(Faatih) dashboard(Nero) history(Nero) settings(Darmawan,Faatih,Nero)
+├── shared/          (Nero)
+└── main.dart        (Resky)
 test/                satu sub-folder per fitur
 docs/                ERD & konflik antar dokumen
 ```
 
-## Memulai (Arsitek, sekali saja)
+## Memulai (Faatih)
 
 ```bash
 # 1. Buat proyek Flutter
@@ -62,7 +62,7 @@ flutterfire configure              # membuat lib/firebase_options.dart + google-
 flutter pub get && flutter analyze && flutter run
 ```
 
-## Push ke GitHub (Arsitek)
+## Push ke GitHub (Faatih)
 
 ```bash
 git init -b main
@@ -76,7 +76,7 @@ git checkout -b develop && git push -u origin develop
 Lalu di GitHub: jadikan repo **private**, undang A–D, aktifkan **branch protection** pada `main` dan
 `develop` (wajib PR + review, tidak boleh push langsung), dan ganti placeholder di `.github/CODEOWNERS`.
 
-## Memulai (Anggota)
+## Memulai (Darmawan, Fitri, Nero, Resky)
 
 ```bash
 git clone <url-repo> && cd datawise
