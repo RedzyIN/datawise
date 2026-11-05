@@ -11,11 +11,11 @@ pembacaan pemakaian data seluler, notifikasi, dan riwayat paket.
 
 | Anggota | Peran | Branch | Folder / file utama |
 |---------|-------|--------|---------------------|
-| Arsitek | Arsitek sistem & database | `develop`, `main` | `core/`, `models/`, `repositories/`, `main.dart`, `pubspec.yaml` |
-| A | Authentication | `feature/auth` | `services/auth_service.dart`, `features/auth/`, `features/settings/settings_page.dart` |
-| B | Fungsi inti (Planner & Paket) | `feature/package-planner` | `services/planner_service.dart`, `features/package/` |
-| C | Android integration | `feature/usage-monitor` | `services/usage_service.dart`, `features/usage_monitor/`, `android/.../kotlin/`, `settings/widgets/` |
-| D | UI/UX & Dashboard | `feature/dashboard` | `features/dashboard/`, `features/history/`, `shared/`, `services/alert_service.dart` |
+| Muh. Resky Putra Ramadhan | Arsitek sistem & database | `develop`, `main` | `core/`, `models/`, `repositories/`, `main.dart`, `pubspec.yaml` |
+| Muh Darmawan Alif Syahputra | Authentication | `feature/auth` | `services/auth_service.dart`, `features/auth/`, `features/settings/settings_page.dart` |
+| Fitri Ramadani | Fungsi inti (Planner & Paket) | `feature/package-planner` | `services/planner_service.dart`, `features/package/` |
+| Faatih Alfaredzy Iansyah Nusi | Android integration | `feature/usage-monitor` | `services/usage_service.dart`, `features/usage_monitor/`, `android/.../kotlin/`, `settings/widgets/` |
+| Besse Fitri Ramadani | UI/UX & Dashboard | `feature/dashboard` | `features/dashboard/`, `features/history/`, `shared/`, `services/alert_service.dart` |
 
 Aturan pemanggilan: **UI → Provider → Service/Repository → SQLite/Firebase/Android.**
 UI tidak memanggil Repository atau MethodChannel langsung.
