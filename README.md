@@ -68,7 +68,7 @@ flutter pub get && flutter analyze && flutter run
 git init -b main
 git add .
 git commit -m "feat: kerangka proyek DATAWISE (kontrak beku v1.0)"
-git remote add origin https://github.com/RedzyIN/datawise.git
+git remote add origin https://github.com/RedzyIN/datawise
 git push -u origin main
 git checkout -b develop && git push -u origin develop
 ```
