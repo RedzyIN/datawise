@@ -68,7 +68,7 @@ flutter pub get && flutter analyze && flutter run
 git init -b main
 git add .
 git commit -m "feat: kerangka proyek DATAWISE (kontrak beku v1.0)"
-git remote add origin <url-repo-private>
+git remote add origin https://github.com/RedzyIN/datawise.git
 git push -u origin main
 git checkout -b develop && git push -u origin develop
 ```
@@ -79,7 +79,7 @@ Lalu di GitHub: jadikan repo **private**, undang A–D, aktifkan **branch protec
 ## Memulai (Darmawan, Fitri, Nero, Resky)
 
 ```bash
-git clone <url-repo> && cd datawise
+git clone https://github.com/RedzyIN/datawise.git && cd datawise
 git checkout develop && git checkout -b feature/<nama-branch-kamu>
 flutter pub get && flutter run
 ```
