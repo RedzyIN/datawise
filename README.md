@@ -85,6 +85,6 @@ flutter pub get && flutter run
 ```
 
 Sebelum PR: `flutter analyze` dan `flutter test` harus bersih. Commit berawalan `feat:`, `fix:`, `docs:`, `test:`.
-Cari `TODO(A)`, `TODO(B)`, `TODO(C)`, `TODO(D)` untuk bagian milikmu.
+Cari `TODO(A)(Darmawan)`, `TODO(B)(Fitri)`, `TODO(C)(Faatih)`, `TODO(D)(Nero)` untuk bagian milikmu.
 
 > **Baca `docs/KONFLIK_ANTAR_DOKUMEN.md`** — ada beberapa perbedaan antar PRD yang perlu diputuskan Arsitek.
