@@ -77,3 +77,10 @@ class InMemorySettingsRepository implements SettingsRepository {
   @override Future<void> set(String uid,String k,String v) async=>items[key(uid,k)]=v;
   @override Future<void> delete(String uid,String k) async=>items.remove(key(uid,k));
 }
+
+extension _FirstOrNullExtension<T> on Iterable<T> {
+  T? get firstOrNull {
+    final iterator = this.iterator;
+    return iterator.moveNext() ? iterator.current : null;
+  }
+}
