@@ -32,7 +32,12 @@ class DbHelper {
           }
           await db.execute('''INSERT INTO data_packages
             (id,user_id,name,operator,total_bytes,initial_used_bytes,start_date,end_date,price,is_active,created_at,updated_at)
-            SELECT id,user_id,name,operator,total_bytes,initial_used_bytes,start_date,end_date,price,is_active,created_at,updated_at
+            SELECT id,user_id,name,operator,total_bytes,initial_used_bytes,start_date,end_date,price,
+              CASE WHEN is_active = 1 AND id = (
+                SELECT MAX(candidate.id) FROM legacy_data_packages AS candidate
+                WHERE candidate.user_id = legacy_data_packages.user_id AND candidate.is_active = 1
+              ) THEN 1 ELSE 0 END,
+              created_at,updated_at
             FROM legacy_data_packages''');
           await db.execute('''INSERT INTO usage_records
             (id,package_id,record_date,used_bytes,source,updated_at)
