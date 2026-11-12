@@ -166,10 +166,10 @@ class SqliteQuotaCategoryRepository implements QuotaCategoryRepository {
           where: "package_id = ? AND category_type = 'main'", whereArgs: [category.packageId]);
       if (mains.isEmpty) throw const AppException(AppException.validation, 'Kategori utama tidak ditemukan.');
       final main = QuotaCategory.fromMap(mains.first);
+      await t.delete('quota_categories', where: 'id = ?', whereArgs: [id]);
       await t.update('quota_categories',
           {'quota_bytes': main.quotaBytes + category.quotaBytes, 'updated_at': timeToMs(DateTime.now())},
           where: 'id = ?', whereArgs: [main.id]);
-      await t.delete('quota_categories', where: 'id = ?', whereArgs: [id]);
     });
   }
   @override Future<QuotaCategory?> getById(int id) async {
