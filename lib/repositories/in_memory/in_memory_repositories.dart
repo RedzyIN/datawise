@@ -46,11 +46,11 @@ class InMemoryClassificationRuleRepository implements ClassificationRuleReposito
 }
 
 class InMemoryUsageRepository implements UsageRepository {
-  InMemoryUsageRepository(this.packages,[InMemoryQuotaCategoryRepository? categories]){
+  InMemoryUsageRepository(this.packages,[this.categories]){
     packages.addDeleteListener((id){final ids=records.values.where((r)=>r.packageId==id).map((r)=>r.id).toSet();records.removeWhere((_,r)=>r.packageId==id);allocations.removeWhere((_,a)=>ids.contains(a.usageRecordId));});
     categories?.addDeleteListener((id)=>allocations.removeWhere((_,a)=>a.categoryId==id));
   }
-  final InMemoryPackageRepository packages;final Map<int,UsageRecord> records={};final Map<int,UsageAllocation> allocations={};int nextRecord=1,nextAllocation=1;
+  final InMemoryPackageRepository packages;final InMemoryQuotaCategoryRepository? categories;final Map<int,UsageRecord> records={};final Map<int,UsageAllocation> allocations={};int nextRecord=1,nextAllocation=1;
   @override Future<void> upsertRecord(int pid,DateTime date,int bytes,UsageSource source) async {if(await packages.getById(pid)==null)throw const AppException(AppException.notFound,'Paket tidak ditemukan.');if(bytes<0)throw const AppException(AppException.validation,'Pemakaian tidak boleh negatif.');final d=dateOnly(date);final old=records.values.where((r)=>r.packageId==pid&&dateOnly(r.recordDate)==d&&r.source==source).firstOrNull;final id=old?.id??nextRecord++;records[id]=UsageRecord(id:id,packageId:pid,recordDate:d,usedBytes:bytes,source:source,updatedAt:DateTime.now());allocations.removeWhere((_,a)=>a.usageRecordId==id);}
   @override Future<void> deleteManual(int pid,DateTime date) async {final d=dateOnly(date);final ids=records.values.where((r)=>r.packageId==pid&&dateOnly(r.recordDate)==d&&r.source==UsageSource.manual).map((r)=>r.id).toSet();records.removeWhere((_,r)=>ids.contains(r.id));allocations.removeWhere((_,a)=>ids.contains(a.usageRecordId));}
   @override Future<UsageRecord?> getEffectiveRecord(int pid,DateTime date) async {final d=dateOnly(date);final a=records.values.where((r)=>r.packageId==pid&&dateOnly(r.recordDate)==d);return a.where((r)=>r.source==UsageSource.manual).firstOrNull??a.where((r)=>r.source==UsageSource.auto).firstOrNull;}
@@ -61,7 +61,7 @@ class InMemoryUsageRepository implements UsageRepository {
   @override Future<Map<DateTime,int>> getDailyUsage(int pid) async {final out=<DateTime,int>{};for(final r in await getEffectiveRecords(pid)){out[dateOnly(r.recordDate)]=r.usedBytes;}return out;}
   @override Future<void> replaceAllocations(int rid,List<UsageAllocation> rows) async {final r=records[rid];if(r==null)throw const AppException(AppException.notFound,'Catatan pemakaian tidak ditemukan.');final total=rows.fold<int>(0,(s,a)=>s+a.usedBytes);if(rows.any((a)=>a.usedBytes<0)||total>r.usedBytes)throw const AppException(AppException.validation,'Total alokasi melebihi pemakaian record.');
     if(rows.map((a)=>'${a.categoryId}|${a.appPackageName}').toSet().length!=rows.length)throw const AppException(AppException.validation,'Alokasi duplikat.');
-    // Kategori lintas paket ditolak ketika repository kategori disediakan.allocations.removeWhere((_,a)=>a.usageRecordId==rid);for(final a in rows){final id=nextAllocation++;allocations[id]=UsageAllocation(id:id,usageRecordId:rid,categoryId:a.categoryId,appPackageName:a.appPackageName,usedBytes:a.usedBytes);}}
+    if(categories!=null){for(final a in rows){final category=await categories!.getById(a.categoryId);if(category==null||category.packageId!=r.packageId)throw const AppException(AppException.validation,'Kategori alokasi tidak sesuai dengan paket.');}}allocations.removeWhere((_,a)=>a.usageRecordId==rid);for(final a in rows){final id=nextAllocation++;allocations[id]=UsageAllocation(id:id,usageRecordId:rid,categoryId:a.categoryId,appPackageName:a.appPackageName,usedBytes:a.usedBytes);}}
   @override Future<List<UsageAllocation>> getAllocations(int id) async=>allocations.values.where((a)=>a.usageRecordId==id).toList();
   @override Future<Map<int,int>> getCategoryUsage(int pid) async {final ids=(await getEffectiveRecords(pid)).map((r)=>r.id).toSet();final out=<int,int>{};for(final a in allocations.values.where((a)=>ids.contains(a.usageRecordId))){out[a.categoryId]=(out[a.categoryId]??0)+a.usedBytes;}return out;}
 }
