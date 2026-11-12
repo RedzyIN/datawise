@@ -2,7 +2,8 @@ import 'date_codec.dart';
 import 'enums.dart';
 
 class AlertLog {
-  final int? id, packageId;
+  final int? id;
+  final int packageId;
   final AlertType type;
   final DateTime alertDate, sentAt;
 
@@ -12,9 +13,9 @@ class AlertLog {
   });
 
   Map<String, Object?> toMap() => {
-    if (id != null) 'id': id, 'package_id': packageId,
-    'alert_type': type.name, 'alert_date': dateToDb(alertDate),
-    'sent_at': timeToMs(sentAt),
+    if (id != null) 'id': id,
+    'package_id': packageId, 'alert_type': type.name,
+    'alert_date': dateToDb(alertDate), 'sent_at': timeToMs(sentAt),
   };
 
   factory AlertLog.fromMap(Map<String, Object?> m) => AlertLog(
