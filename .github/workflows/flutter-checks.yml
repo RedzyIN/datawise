@@ -22,4 +22,9 @@ jobs:
       - name: Analyze
         run: flutter analyze --no-fatal-infos
       - name: Test
-        run: flutter test
+        run: |
+          if [ -d test ] && find test -type f -name '*_test.dart' -print -quit | grep -q .; then
+            flutter test
+          else
+            echo "No test files found. Skipping tests."
+          fi
