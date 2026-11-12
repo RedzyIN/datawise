@@ -189,7 +189,7 @@ class SqliteClassificationRuleRepository implements ClassificationRuleRepository
     if (r.appPackageName.trim().isEmpty ||
         (r.startMinute != null && (r.startMinute! < 0 || r.startMinute! > 1439)) ||
         (r.endMinute != null && (r.endMinute! < 0 || r.endMinute! > 1439)) ||
-        ((r.startMinute == null) != (r.endMinute == null))) throw const AppException(AppException.validation, 'Aturan klasifikasi tidak valid.');
+        ((r.startMinute == null) != (r.endMinute == null))) {\n      throw const AppException(AppException.validation, 'Aturan klasifikasi tidak valid.');\n    }
   }
   Future<void> samePackage(DatabaseExecutor db, ClassificationRule r) async {
     final rows = await db.query('quota_categories', columns: ['id'], where: 'id = ? AND package_id = ?', whereArgs: [r.categoryId, r.packageId]);
@@ -253,7 +253,7 @@ class SqliteUsageRepository implements UsageRepository {
       if (rows.isEmpty) throw const AppException(AppException.notFound, 'Catatan pemakaian tidak ditemukan.');
       final record = UsageRecord.fromMap(rows.first);
       final total = items.fold<int>(0, (s, a) => s + a.usedBytes);
-      final keys = items.map((a) => a.categoryId.toString() + '|' + a.appPackageName).toSet();
+      final keys = items.map((a) => '${a.categoryId}|${a.appPackageName}').toSet();
       if ((record.source == UsageSource.manual && items.isNotEmpty) || items.any((a) => a.usedBytes < 0) || total > record.usedBytes || keys.length != items.length) throw const AppException(AppException.validation, 'Data alokasi tidak valid.');
       for (final a in items) {
         final c = await t.query('quota_categories', where: 'id = ? AND package_id = ?', whereArgs: [a.categoryId, record.packageId]);
