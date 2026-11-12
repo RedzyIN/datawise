@@ -5,7 +5,7 @@ import 'package:sqflite/sqflite.dart';
 import 'constants.dart';
 
 class DbHelper {
-  DbHelper._({String? databasePath}) : _databasePath = databasePath;
+  DbHelper._({this._databasePath});
 
   static final DbHelper instance = DbHelper._();
 
