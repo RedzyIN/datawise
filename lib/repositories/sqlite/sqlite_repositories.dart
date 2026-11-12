@@ -80,14 +80,20 @@ class SqliteQuotaCategoryRepository implements QuotaCategoryRepository {
     }
   }
   @override Future<int> add(QuotaCategory c) async {
-    valid(c); final db = await h.database;
+    valid(c);
+    if (c.type == QuotaCategoryType.main) {
+      throw const AppException(AppException.validation, 'Kategori utama dibuat otomatis bersama paket.');
+    }
+    final db = await h.database;
     return db.transaction((t) async {
-      final p = await t.query('data_packages', where: 'id = ?', whereArgs: [c.packageId]);
-      if (p.isEmpty) throw const AppException(AppException.notFound, 'Paket tidak ditemukan.');
-      final s = await t.rawQuery('SELECT COALESCE(SUM(quota_bytes),0) total FROM quota_categories WHERE package_id = ?', [c.packageId]);
-      if ((s.first['total'] as int) + c.quotaBytes > (p.first['total_bytes'] as int)) {
-        throw const AppException(AppException.validation, 'Kuota kategori melebihi kuota paket.');
-      }
+      final mains = await t.query('quota_categories',
+          where: "package_id = ? AND category_type = 'main'", whereArgs: [c.packageId]);
+      if (mains.isEmpty) throw const AppException(AppException.validation, 'Kategori utama paket tidak ditemukan.');
+      final main = QuotaCategory.fromMap(mains.first);
+      if (main.quotaBytes <= c.quotaBytes) throw const AppException(AppException.validation, 'Sisa kuota utama tidak mencukupi.');
+      await t.update('quota_categories',
+          {'quota_bytes': main.quotaBytes - c.quotaBytes, 'updated_at': timeToMs(c.updatedAt)},
+          where: 'id = ?', whereArgs: [main.id]);
       return t.insert('quota_categories', c.toMap());
     });
   }
@@ -110,7 +116,15 @@ class SqliteQuotaCategoryRepository implements QuotaCategoryRepository {
     await db.transaction((t) async {
       final r = await t.query('quota_categories', where: 'id = ?', whereArgs: [id]);
       if (r.isEmpty) throw const AppException(AppException.notFound, 'Kategori tidak ditemukan.');
-      if (r.first['category_type'] == 'main') throw const AppException(AppException.validation, 'Kategori utama tidak boleh dihapus.');
+      final category = QuotaCategory.fromMap(r.first);
+      if (category.type == QuotaCategoryType.main) throw const AppException(AppException.validation, 'Kategori utama tidak boleh dihapus.');
+      final mains = await t.query('quota_categories',
+          where: "package_id = ? AND category_type = 'main'", whereArgs: [category.packageId]);
+      if (mains.isEmpty) throw const AppException(AppException.validation, 'Kategori utama tidak ditemukan.');
+      final main = QuotaCategory.fromMap(mains.first);
+      await t.update('quota_categories',
+          {'quota_bytes': main.quotaBytes + category.quotaBytes, 'updated_at': timeToMs(DateTime.now())},
+          where: 'id = ?', whereArgs: [main.id]);
       await t.delete('quota_categories', where: 'id = ?', whereArgs: [id]);
     });
   }
