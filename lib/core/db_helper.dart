@@ -22,12 +22,31 @@ class DbHelper {
         }
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        // v1 adalah skema fondasi baru. Jangan menghapus database pengguna.
-        // Migrasi dari skema lama harus ditambahkan di sini sebelum rilis.
-        if (oldVersion < 1) {
+        if (oldVersion < 2) {
+          // Simpan data dari skema scaffold lama sebelum membuat tabel v2.
+          await db.execute('ALTER TABLE data_packages RENAME TO legacy_data_packages');
+          await db.execute('ALTER TABLE usage_records RENAME TO legacy_usage_records');
+          await db.execute('ALTER TABLE alert_logs RENAME TO legacy_alert_logs');
           for (final sql in _createStatements) {
             await db.execute(sql);
           }
+          await db.execute('''INSERT INTO data_packages
+            (id,user_id,name,operator,total_bytes,initial_used_bytes,start_date,end_date,price,is_active,created_at,updated_at)
+            SELECT id,user_id,name,operator,total_bytes,initial_used_bytes,start_date,end_date,price,is_active,created_at,updated_at
+            FROM legacy_data_packages''');
+          await db.execute('''INSERT INTO usage_records
+            (id,package_id,record_date,used_bytes,source,updated_at)
+            SELECT id,package_id,record_date,used_bytes,source,updated_at
+            FROM legacy_usage_records''');
+          await db.execute('''INSERT INTO alert_logs
+            (id,package_id,alert_type,alert_date,sent_at)
+            SELECT id,package_id,alert_type,alert_date,sent_at
+            FROM legacy_alert_logs''');
+          await db.execute('DROP TABLE legacy_usage_records');
+          await db.execute('DROP TABLE legacy_alert_logs');
+          await db.execute('DROP TABLE legacy_data_packages');
+          // app_settings lama dipertahankan sebagai arsip. Nilainya tidak
+          // dipindahkan karena tidak memiliki Firebase UID pemilik.
         }
       },
     );
