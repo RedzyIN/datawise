@@ -1,5 +1,4 @@
 // MILIK ARSITEK. Satu-satunya tempat mendaftarkan Repository, Service, dan Provider.
-// Minggu 2: ganti InMemory* dengan implementasi sqflite (bentuk sama).
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 
@@ -13,14 +12,14 @@ import '../services/auth_service.dart';
 import '../services/usage_service.dart';
 
 List<SingleChildWidget> buildAppProviders() {
-  // --- Repository (versi in-memory, minggu 1) ---
-  final packageRepo = InMemoryPackageRepository();
-  final QuotaCategoryRepository categoryRepo = InMemoryQuotaCategoryRepository(packageRepo);
-  final ClassificationRuleRepository ruleRepo = InMemoryClassificationRuleRepository(packageRepo, categoryRepo);
-  final UsageRepository usageRepo = InMemoryUsageRepository(packageRepo, categoryRepo);
-  final DataLimitRepository dataLimitRepo = InMemoryDataLimitRepository(packageRepo);
-  final AlertRepository alertRepo = InMemoryAlertRepository(packageRepo);
-  final SettingsRepository settingsRepo = InMemorySettingsRepository();
+  // --- Repository SQLite (penyimpanan permanen lokal) ---
+  final PackageRepository packageRepo = SqlitePackageRepository();
+  final QuotaCategoryRepository categoryRepo = SqliteQuotaCategoryRepository();
+  final ClassificationRuleRepository ruleRepo = SqliteClassificationRuleRepository();
+  final UsageRepository usageRepo = SqliteUsageRepository();
+  final DataLimitRepository dataLimitRepo = SqliteDataLimitRepository();
+  final AlertRepository alertRepo = SqliteAlertRepository();
+  final SettingsRepository settingsRepo = SqliteSettingsRepository();
 
   // --- Service ---
   final AuthService authService = FirebaseAuthService();
