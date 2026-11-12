@@ -148,10 +148,19 @@ class SqliteQuotaCategoryRepository implements QuotaCategoryRepository {
       } else {
         final nextMain = main.quotaBytes + old.quotaBytes - c.quotaBytes;
         if (nextMain <= 0) throw const AppException(AppException.validation, 'Kuota utama harus lebih dari nol.');
-        await t.update('quota_categories',
-            {'quota_bytes': nextMain, 'updated_at': timeToMs(c.updatedAt)},
-            where: 'id = ?', whereArgs: [main.id]);
-        await t.update('quota_categories', c.toMap(), where: 'id = ?', whereArgs: [c.id]);
+        if (c.quotaBytes > old.quotaBytes) {
+          // Tambah kuota kategori: kurangi main lebih dahulu.
+          await t.update('quota_categories',
+              {'quota_bytes': nextMain, 'updated_at': timeToMs(c.updatedAt)},
+              where: 'id = ?', whereArgs: [main.id]);
+          await t.update('quota_categories', c.toMap(), where: 'id = ?', whereArgs: [c.id]);
+        } else {
+          // Kurangi kuota kategori: turunkan kategori lebih dahulu.
+          await t.update('quota_categories', c.toMap(), where: 'id = ?', whereArgs: [c.id]);
+          await t.update('quota_categories',
+              {'quota_bytes': nextMain, 'updated_at': timeToMs(c.updatedAt)},
+              where: 'id = ?', whereArgs: [main.id]);
+        }
       }
     });
   }
