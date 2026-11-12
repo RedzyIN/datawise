@@ -15,8 +15,11 @@ import '../services/usage_service.dart';
 List<SingleChildWidget> buildAppProviders() {
   // --- Repository (versi in-memory, minggu 1) ---
   final packageRepo = InMemoryPackageRepository();
+  final QuotaCategoryRepository categoryRepo = InMemoryQuotaCategoryRepository(packageRepo);
+  final ClassificationRuleRepository ruleRepo = InMemoryClassificationRuleRepository(packageRepo);
   final UsageRepository usageRepo = InMemoryUsageRepository(packageRepo);
-  final AlertRepository alertRepo = InMemoryAlertRepository();
+  final DataLimitRepository dataLimitRepo = InMemoryDataLimitRepository(packageRepo);
+  final AlertRepository alertRepo = InMemoryAlertRepository(packageRepo);
   final SettingsRepository settingsRepo = InMemorySettingsRepository();
 
   // --- Service ---
@@ -26,7 +29,10 @@ List<SingleChildWidget> buildAppProviders() {
 
   return [
     Provider<PackageRepository>.value(value: packageRepo),
+    Provider<QuotaCategoryRepository>.value(value: categoryRepo),
+    Provider<ClassificationRuleRepository>.value(value: ruleRepo),
     Provider<UsageRepository>.value(value: usageRepo),
+    Provider<DataLimitRepository>.value(value: dataLimitRepo),
     Provider<AlertRepository>.value(value: alertRepo),
     Provider<SettingsRepository>.value(value: settingsRepo),
     Provider<AuthService>.value(value: authService),
