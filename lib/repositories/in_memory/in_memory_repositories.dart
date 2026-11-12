@@ -65,7 +65,7 @@ class InMemoryDataLimitRepository implements DataLimitRepository {
 class InMemoryAlertRepository implements AlertRepository {
   InMemoryAlertRepository(this.packages){packages.addDeleteListener((id)=>logs.removeWhere((_,v)=>v.packageId==id));}
   final InMemoryPackageRepository packages;final Map<String,AlertLog> logs={};
-  String key(int id,AlertType t,DateTime d)=>'$id|\u0024{t.name}|\u0024{dateToDb(d)}';
+  String key(int id,AlertType t,DateTime d)=>id.toString()+'|'+t.name+'|'+dateToDb(d);
   @override Future<bool> hasBeenSent(int id,AlertType t,DateTime d) async=>logs.containsKey(key(id,t,d));
   @override Future<void> markSent(int id,AlertType t,DateTime d) async {final k=key(id,t,d);logs.putIfAbsent(k,()=>AlertLog(packageId:id,type:t,alertDate:dateOnly(d),sentAt:DateTime.now()));}
   @override Future<List<AlertLog>> getByPackage(int id) async=>logs.values.where((v)=>v.packageId==id).toList();
