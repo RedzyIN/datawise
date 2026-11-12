@@ -269,3 +269,133 @@ Dokumen ini membekukan bentuk target. Implementasi kode harus diselaraskan dalam
 - [ ] `flutter analyze` dan `flutter test` lulus.
 - [ ] Dokumen ERD dan README menunjuk ke kontrak ini.
 - [ ] Kontrak disepakati tim sebelum anggota mulai implementasi fitur.
+
+
+## 10. SQL DDL acuan
+
+SQL berikut adalah definisi tabel v1. Jalankan seluruh statement dalam urutan ini. Foreign key wajib aktif pada setiap koneksi SQLite.
+
+```sql
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE data_packages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  operator TEXT NOT NULL,
+  total_bytes INTEGER NOT NULL CHECK (total_bytes > 0),
+  initial_used_bytes INTEGER NOT NULL DEFAULT 0 CHECK (initial_used_bytes >= 0),
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  price INTEGER CHECK (price IS NULL OR price >= 0),
+  is_active INTEGER NOT NULL DEFAULT 0 CHECK (is_active IN (0, 1)),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  CHECK (end_date > start_date)
+);
+
+CREATE INDEX idx_data_packages_user_active
+  ON data_packages(user_id, is_active);
+
+CREATE UNIQUE INDEX idx_one_active_package_per_user
+  ON data_packages(user_id) WHERE is_active = 1;
+
+CREATE TABLE quota_categories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  package_id INTEGER NOT NULL REFERENCES data_packages(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  category_type TEXT NOT NULL
+    CHECK (category_type IN ('main', 'night', 'social', 'app', 'custom')),
+  quota_bytes INTEGER NOT NULL CHECK (quota_bytes > 0),
+  start_minute INTEGER CHECK (start_minute IS NULL OR start_minute BETWEEN 0 AND 1439),
+  end_minute INTEGER CHECK (end_minute IS NULL OR end_minute BETWEEN 0 AND 1439),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(package_id, name)
+);
+
+CREATE UNIQUE INDEX idx_one_main_category_per_package
+  ON quota_categories(package_id) WHERE category_type = 'main';
+
+CREATE INDEX idx_quota_categories_package
+  ON quota_categories(package_id);
+
+CREATE TABLE usage_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  package_id INTEGER NOT NULL REFERENCES data_packages(id) ON DELETE CASCADE,
+  record_date TEXT NOT NULL,
+  used_bytes INTEGER NOT NULL CHECK (used_bytes >= 0),
+  source TEXT NOT NULL CHECK (source IN ('auto', 'manual')),
+  updated_at INTEGER NOT NULL,
+  UNIQUE(package_id, record_date, source)
+);
+
+CREATE INDEX idx_usage_records_package_date
+  ON usage_records(package_id, record_date);
+
+CREATE TABLE classification_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  package_id INTEGER NOT NULL REFERENCES data_packages(id) ON DELETE CASCADE,
+  category_id INTEGER NOT NULL REFERENCES quota_categories(id) ON DELETE CASCADE,
+  app_package_name TEXT NOT NULL,
+  start_minute INTEGER CHECK (start_minute IS NULL OR start_minute BETWEEN 0 AND 1439),
+  end_minute INTEGER CHECK (end_minute IS NULL OR end_minute BETWEEN 0 AND 1439),
+  priority INTEGER NOT NULL DEFAULT 100,
+  is_enabled INTEGER NOT NULL DEFAULT 1 CHECK (is_enabled IN (0, 1)),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_classification_rules_package_priority
+  ON classification_rules(package_id, is_enabled, priority, id);
+
+CREATE TABLE usage_allocations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usage_record_id INTEGER NOT NULL REFERENCES usage_records(id) ON DELETE CASCADE,
+  category_id INTEGER NOT NULL REFERENCES quota_categories(id) ON DELETE CASCADE,
+  app_package_name TEXT NOT NULL DEFAULT '',
+  used_bytes INTEGER NOT NULL CHECK (used_bytes >= 0),
+  UNIQUE(usage_record_id, category_id, app_package_name)
+);
+
+CREATE INDEX idx_usage_allocations_record
+  ON usage_allocations(usage_record_id);
+
+CREATE INDEX idx_usage_allocations_category
+  ON usage_allocations(category_id);
+
+CREATE TABLE data_limit_settings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  package_id INTEGER NOT NULL UNIQUE REFERENCES data_packages(id) ON DELETE CASCADE,
+  daily_warning_percent INTEGER NOT NULL DEFAULT 100 CHECK (daily_warning_percent > 0),
+  quota_warning_percent INTEGER NOT NULL DEFAULT 10 CHECK (quota_warning_percent BETWEEN 1 AND 100),
+  is_enabled INTEGER NOT NULL DEFAULT 1 CHECK (is_enabled IN (0, 1)),
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE user_settings (
+  user_id TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  PRIMARY KEY(user_id, key)
+);
+
+CREATE TABLE alert_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  package_id INTEGER NOT NULL REFERENCES data_packages(id) ON DELETE CASCADE,
+  alert_type TEXT NOT NULL
+    CHECK (alert_type IN ('daily80', 'daily100', 'dailyOver', 'quota10', 'expiring1d')),
+  alert_date TEXT NOT NULL,
+  sent_at INTEGER NOT NULL,
+  UNIQUE(package_id, alert_type, alert_date)
+);
+
+CREATE INDEX idx_alert_logs_package_date
+  ON alert_logs(package_id, alert_date);
+```
+
+Catatan implementasi:
+- SQLite tidak dapat menegakkan semua aturan lintas tabel di atas dengan CHECK biasa. Repository/service wajib memvalidasi bahwa kategori dan rule benar-benar milik paket yang sama, jumlah kuota kategori sama dengan total paket, kategori main tersedia, dan jumlah alokasi tidak melebihi record.
+- Saat membuat paket, buat paket dan kategori main dalam satu transaksi. Saat mengubah kuota kategori, validasi total kuota dalam satu transaksi.
+- Partial unique index memastikan maksimal satu paket aktif per user dan satu kategori main per paket. Aktifkan foreign keys melalui `onConfigure`.
+- Database v1 masih tahap pengembangan. Jika sudah ada instalasi pengguna, perubahan skema harus memakai migrasi `onUpgrade`, bukan menghapus database.
