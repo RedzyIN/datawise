@@ -98,17 +98,38 @@ class SqliteQuotaCategoryRepository implements QuotaCategoryRepository {
     });
   }
   @override Future<void> update(QuotaCategory c) async {
-    valid(c); if (c.id == null) throw const AppException(AppException.validation, 'ID kategori wajib tersedia.');
+    valid(c);
+    if (c.id == null) throw const AppException(AppException.validation, 'ID kategori wajib tersedia.');
     final db = await h.database;
     await db.transaction((t) async {
-      final old = await t.query('quota_categories', where: 'id = ?', whereArgs: [c.id]);
-      if (old.isEmpty) throw const AppException(AppException.notFound, 'Kategori tidak ditemukan.');
-      if (old.first['category_type'] == 'main' && c.type != QuotaCategoryType.main) throw const AppException(AppException.validation, 'Kategori utama tidak boleh diubah jenisnya.');
-      final p = await t.query('data_packages', where: 'id = ?', whereArgs: [c.packageId]);
-      if (p.isEmpty) throw const AppException(AppException.notFound, 'Paket tidak ditemukan.');
-      final s = await t.rawQuery('SELECT COALESCE(SUM(quota_bytes),0) total FROM quota_categories WHERE package_id = ? AND id != ?', [c.packageId, c.id]);
-      if ((s.first['total'] as int) + c.quotaBytes != (p.first['total_bytes'] as int)) throw const AppException(AppException.validation, 'Total kategori harus sama dengan kuota paket.');
-      await t.update('quota_categories', c.toMap(), where: 'id = ?', whereArgs: [c.id]);
+      final oldRows = await t.query('quota_categories', where: 'id = ?', whereArgs: [c.id]);
+      if (oldRows.isEmpty) throw const AppException(AppException.notFound, 'Kategori tidak ditemukan.');
+      final old = QuotaCategory.fromMap(oldRows.first);
+      if (old.packageId != c.packageId) throw const AppException(AppException.validation, 'Kategori tidak boleh dipindahkan ke paket lain.');
+      if (old.type != c.type) throw const AppException(AppException.validation, 'Jenis kategori tidak boleh diubah.');
+      final mainRows = await t.query('quota_categories',
+          where: "package_id = ? AND category_type = 'main'", whereArgs: [c.packageId]);
+      if (mainRows.isEmpty) throw const AppException(AppException.validation, 'Kategori utama tidak ditemukan.');
+      final main = QuotaCategory.fromMap(mainRows.first);
+      if (old.type == QuotaCategoryType.main) {
+        final packageRows = await t.query('data_packages', columns: ['total_bytes'],
+            where: 'id = ?', whereArgs: [c.packageId]);
+        final others = await t.rawQuery("SELECT COALESCE(SUM(quota_bytes),0) total FROM quota_categories WHERE package_id = ? AND category_type != 'main'", [c.packageId]);
+        final totalBytes = packageRows.first['total_bytes'] as int;
+        final otherBytes = others.first['total'] as int;
+        final residual = totalBytes - otherBytes;
+        if (residual <= 0) throw const AppException(AppException.validation, 'Kuota utama harus lebih dari nol.');
+        await t.update('quota_categories',
+            {'quota_bytes': residual, 'updated_at': timeToMs(c.updatedAt)},
+            where: 'id = ?', whereArgs: [c.id]);
+      } else {
+        final nextMain = main.quotaBytes + old.quotaBytes - c.quotaBytes;
+        if (nextMain <= 0) throw const AppException(AppException.validation, 'Kuota utama harus lebih dari nol.');
+        await t.update('quota_categories',
+            {'quota_bytes': nextMain, 'updated_at': timeToMs(c.updatedAt)},
+            where: 'id = ?', whereArgs: [main.id]);
+        await t.update('quota_categories', c.toMap(), where: 'id = ?', whereArgs: [c.id]);
+      }
     });
   }
   @override Future<void> delete(int id) async {
