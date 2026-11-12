@@ -189,7 +189,9 @@ class SqliteClassificationRuleRepository implements ClassificationRuleRepository
     if (r.appPackageName.trim().isEmpty ||
         (r.startMinute != null && (r.startMinute! < 0 || r.startMinute! > 1439)) ||
         (r.endMinute != null && (r.endMinute! < 0 || r.endMinute! > 1439)) ||
-        ((r.startMinute == null) != (r.endMinute == null))) {\n      throw const AppException(AppException.validation, 'Aturan klasifikasi tidak valid.');\n    }
+        ((r.startMinute == null) != (r.endMinute == null))) {
+      throw const AppException(AppException.validation, 'Aturan klasifikasi tidak valid.');
+    }
   }
   Future<void> samePackage(DatabaseExecutor db, ClassificationRule r) async {
     final rows = await db.query('quota_categories', columns: ['id'], where: 'id = ? AND package_id = ?', whereArgs: [r.categoryId, r.packageId]);
