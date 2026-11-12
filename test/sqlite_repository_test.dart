@@ -93,4 +93,43 @@ void main() {
     final main = (await categories.getByPackage(id)).single;
     expect(main.quotaBytes, 25000000000);
   });
+  test('updating category quota rebalances main in both directions', () async {
+    final id = await packages.add(samplePackage());
+    final now = DateTime(2026, 11, 12);
+    final categoryId = await categories.add(QuotaCategory(
+      packageId: id,
+      name: 'Kuota Malam',
+      type: QuotaCategoryType.night,
+      quotaBytes: 5000000000,
+      createdAt: now,
+      updatedAt: now,
+    ));
+    final category = (await categories.getById(categoryId))!;
+    await categories.update(QuotaCategory(
+      id: category.id,
+      packageId: id,
+      name: category.name,
+      type: category.type,
+      quotaBytes: 7000000000,
+      createdAt: category.createdAt,
+      updatedAt: now,
+    ));
+    var rows = await categories.getByPackage(id);
+    expect(rows.singleWhere((c) => c.type == QuotaCategoryType.main).quotaBytes,
+        13000000000);
+    final updated = (await categories.getById(categoryId))!;
+    await categories.update(QuotaCategory(
+      id: updated.id,
+      packageId: id,
+      name: updated.name,
+      type: updated.type,
+      quotaBytes: 3000000000,
+      createdAt: updated.createdAt,
+      updatedAt: now,
+    ));
+    rows = await categories.getByPackage(id);
+    expect(rows.singleWhere((c) => c.type == QuotaCategoryType.main).quotaBytes,
+        17000000000);
+  });
+
 }
