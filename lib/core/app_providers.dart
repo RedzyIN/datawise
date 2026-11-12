@@ -16,8 +16,8 @@ List<SingleChildWidget> buildAppProviders() {
   // --- Repository (versi in-memory, minggu 1) ---
   final packageRepo = InMemoryPackageRepository();
   final QuotaCategoryRepository categoryRepo = InMemoryQuotaCategoryRepository(packageRepo);
-  final ClassificationRuleRepository ruleRepo = InMemoryClassificationRuleRepository(packageRepo);
-  final UsageRepository usageRepo = InMemoryUsageRepository(packageRepo);
+  final ClassificationRuleRepository ruleRepo = InMemoryClassificationRuleRepository(packageRepo, categoryRepo);
+  final UsageRepository usageRepo = InMemoryUsageRepository(packageRepo, categoryRepo);
   final DataLimitRepository dataLimitRepo = InMemoryDataLimitRepository(packageRepo);
   final AlertRepository alertRepo = InMemoryAlertRepository(packageRepo);
   final SettingsRepository settingsRepo = InMemorySettingsRepository();
