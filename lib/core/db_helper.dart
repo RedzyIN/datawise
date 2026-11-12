@@ -390,14 +390,6 @@ class DbHelper {
     END
     ''',
     '''
-    CREATE TRIGGER prevent_main_category_delete
-    BEFORE DELETE ON quota_categories
-    WHEN OLD.category_type = 'main'
-    BEGIN
-      SELECT RAISE(ABORT, 'main category cannot be deleted');
-    END
-    ''',
-    '''
     CREATE TRIGGER validate_category_total_insert
     BEFORE INSERT ON quota_categories
     WHEN COALESCE((
