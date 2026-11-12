@@ -23,24 +23,33 @@ class InMemoryPackageRepository implements PackageRepository {
 class InMemoryQuotaCategoryRepository implements QuotaCategoryRepository {
   InMemoryQuotaCategoryRepository(this.packages){packages.addDeleteListener((id)=>items.removeWhere((_,v)=>v.packageId==id));}
   final InMemoryPackageRepository packages; final Map<int,QuotaCategory> items={}; int next=1;
+  final List<void Function(int)> _categoryDeleteListeners=[];
+  void addDeleteListener(void Function(int) listener)=>_categoryDeleteListeners.add(listener);
   @override Future<int> add(QuotaCategory c) async {if(await packages.getById(c.packageId)==null||c.quotaBytes<=0)throw const AppException(AppException.validation,'Kategori tidak valid.');if(items.values.any((v)=>v.packageId==c.packageId&&(v.name==c.name||(c.type==QuotaCategoryType.main&&v.type==QuotaCategoryType.main))))throw const AppException(AppException.validation,'Nama atau kategori utama sudah digunakan.');final id=next++;items[id]=QuotaCategory(id:id,packageId:c.packageId,name:c.name,type:c.type,quotaBytes:c.quotaBytes,startMinute:c.startMinute,endMinute:c.endMinute,createdAt:c.createdAt,updatedAt:c.updatedAt);return id;}
   @override Future<void> update(QuotaCategory c) async {if(c.id==null||!items.containsKey(c.id))throw const AppException(AppException.notFound,'Kategori tidak ditemukan.');items[c.id!]=c;}
-  @override Future<void> delete(int id) async {if(items.remove(id)==null)throw const AppException(AppException.notFound,'Kategori tidak ditemukan.');}
+  @override Future<void> delete(int id) async {if(items.remove(id)==null)throw const AppException(AppException.notFound,'Kategori tidak ditemukan.');for(final f in _categoryDeleteListeners){f(id);}}
   @override Future<QuotaCategory?> getById(int id) async=>items[id];
   @override Future<List<QuotaCategory>> getByPackage(int id) async=>items.values.where((v)=>v.packageId==id).toList();
 }
 
 class InMemoryClassificationRuleRepository implements ClassificationRuleRepository {
-  InMemoryClassificationRuleRepository(this.packages){packages.addDeleteListener((id)=>items.removeWhere((_,v)=>v.packageId==id));}
-  final InMemoryPackageRepository packages;final Map<int,ClassificationRule> items={};int next=1;
-  @override Future<int> add(ClassificationRule r) async {if(await packages.getById(r.packageId)==null||r.appPackageName.trim().isEmpty)throw const AppException(AppException.validation,'Aturan klasifikasi tidak valid.');final id=next++;items[id]=ClassificationRule(id:id,packageId:r.packageId,categoryId:r.categoryId,appPackageName:r.appPackageName,startMinute:r.startMinute,endMinute:r.endMinute,priority:r.priority,isEnabled:r.isEnabled,createdAt:r.createdAt,updatedAt:r.updatedAt);return id;}
+  InMemoryClassificationRuleRepository(this.packages,this.categories){
+    packages.addDeleteListener((id)=>items.removeWhere((_,v)=>v.packageId==id));
+    categories.addDeleteListener((id)=>items.removeWhere((_,v)=>v.categoryId==id));
+  }
+  final InMemoryPackageRepository packages;final InMemoryQuotaCategoryRepository categories;
+  final Map<int,ClassificationRule> items={};int next=1;
+  @override Future<int> add(ClassificationRule r) async {final category=await categories.getById(r.categoryId);if(await packages.getById(r.packageId)==null||category==null||category.packageId!=r.packageId||r.appPackageName.trim().isEmpty)throw const AppException(AppException.validation,'Aturan klasifikasi tidak valid.');final id=next++;items[id]=ClassificationRule(id:id,packageId:r.packageId,categoryId:r.categoryId,appPackageName:r.appPackageName,startMinute:r.startMinute,endMinute:r.endMinute,priority:r.priority,isEnabled:r.isEnabled,createdAt:r.createdAt,updatedAt:r.updatedAt);return id;}
   @override Future<void> update(ClassificationRule r) async {if(r.id==null||!items.containsKey(r.id))throw const AppException(AppException.notFound,'Aturan tidak ditemukan.');items[r.id!]=r;}
   @override Future<void> delete(int id) async {if(items.remove(id)==null)throw const AppException(AppException.notFound,'Aturan tidak ditemukan.');}
   @override Future<List<ClassificationRule>> getByPackage(int id) async {final a=items.values.where((v)=>v.packageId==id).toList()..sort((x,y)=>x.priority!=y.priority?x.priority.compareTo(y.priority):(x.id??0).compareTo(y.id??0));return a;}
 }
 
 class InMemoryUsageRepository implements UsageRepository {
-  InMemoryUsageRepository(this.packages){packages.addDeleteListener((id){final ids=records.values.where((r)=>r.packageId==id).map((r)=>r.id).toSet();records.removeWhere((_,r)=>r.packageId==id);allocations.removeWhere((_,a)=>ids.contains(a.usageRecordId));});}
+  InMemoryUsageRepository(this.packages,[InMemoryQuotaCategoryRepository? categories]){
+    packages.addDeleteListener((id){final ids=records.values.where((r)=>r.packageId==id).map((r)=>r.id).toSet();records.removeWhere((_,r)=>r.packageId==id);allocations.removeWhere((_,a)=>ids.contains(a.usageRecordId));});
+    categories?.addDeleteListener((id)=>allocations.removeWhere((_,a)=>a.categoryId==id));
+  }
   final InMemoryPackageRepository packages;final Map<int,UsageRecord> records={};final Map<int,UsageAllocation> allocations={};int nextRecord=1,nextAllocation=1;
   @override Future<void> upsertRecord(int pid,DateTime date,int bytes,UsageSource source) async {if(await packages.getById(pid)==null)throw const AppException(AppException.notFound,'Paket tidak ditemukan.');if(bytes<0)throw const AppException(AppException.validation,'Pemakaian tidak boleh negatif.');final d=dateOnly(date);final old=records.values.where((r)=>r.packageId==pid&&dateOnly(r.recordDate)==d&&r.source==source).firstOrNull;final id=old?.id??nextRecord++;records[id]=UsageRecord(id:id,packageId:pid,recordDate:d,usedBytes:bytes,source:source,updatedAt:DateTime.now());allocations.removeWhere((_,a)=>a.usageRecordId==id);}
   @override Future<void> deleteManual(int pid,DateTime date) async {final d=dateOnly(date);final ids=records.values.where((r)=>r.packageId==pid&&dateOnly(r.recordDate)==d&&r.source==UsageSource.manual).map((r)=>r.id).toSet();records.removeWhere((_,r)=>ids.contains(r.id));allocations.removeWhere((_,a)=>ids.contains(a.usageRecordId));}
