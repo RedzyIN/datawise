@@ -6,3 +6,5 @@ export 'package_repository.dart';
 export 'quota_category_repository.dart';
 export 'settings_repository.dart';
 export 'usage_repository.dart';
+
+export 'sqlite/sqlite_repositories.dart';
