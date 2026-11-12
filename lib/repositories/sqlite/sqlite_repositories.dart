@@ -29,16 +29,39 @@ class SqlitePackageRepository implements PackageRepository {
     });
   }
   @override Future<void> update(DataPackage p) async {
-    valid(p); final id = p.id;
+    valid(p);
+    final id = p.id;
     if (id == null) throw const AppException(AppException.validation, 'ID paket wajib tersedia.');
     final db = await h.database;
     await db.transaction((t) async {
       final old = await t.query('data_packages', where: 'id = ?', whereArgs: [id]);
       if (old.isEmpty) throw const AppException(AppException.notFound, 'Paket tidak ditemukan.');
-      final s = await t.rawQuery('SELECT COALESCE(SUM(quota_bytes),0) total FROM quota_categories WHERE package_id = ?', [id]);
-      if (s.first['total'] != p.totalBytes) throw const AppException(AppException.validation, 'Total kategori harus sama dengan kuota paket.');
-      if (p.isActive) await t.update('data_packages', {'is_active': 0}, where: 'user_id = ? AND id != ?', whereArgs: [p.userId, id]);
+      if (old.first['user_id'] != p.userId) {
+        throw const AppException(AppException.validation, 'Pemilik paket tidak boleh diubah.');
+      }
+      final mainRows = await t.query('quota_categories',
+          where: "package_id = ? AND category_type = 'main'", whereArgs: [id]);
+      if (mainRows.length != 1) {
+        throw const AppException(AppException.validation, 'Paket harus memiliki tepat satu kategori utama.');
+      }
+      final otherRows = await t.rawQuery(
+          "SELECT COALESCE(SUM(quota_bytes),0) total FROM quota_categories WHERE package_id = ? AND category_type != 'main'", [id]);
+      final otherBytes = otherRows.first['total'] as int;
+      final mainBytes = p.totalBytes - otherBytes;
+      if (mainBytes <= 0) {
+        throw const AppException(AppException.validation, 'Kuota paket tidak cukup untuk kategori tambahan.');
+      }
+      if (p.isActive) {
+        await t.update('data_packages', {'is_active': 0},
+            where: 'user_id = ? AND id != ?', whereArgs: [p.userId, id]);
+      }
+      // Ubah total paket lebih dahulu agar trigger kategori menerima
+      // kenaikan atau penurunan kuota utama dalam transaksi yang sama.
       await t.update('data_packages', p.toMap(), where: 'id = ?', whereArgs: [id]);
+      await t.update('quota_categories', {
+        'quota_bytes': mainBytes,
+        'updated_at': timeToMs(p.updatedAt),
+      }, where: 'id = ?', whereArgs: [mainRows.first['id']]);
     });
   }
   @override Future<void> delete(int id) async {
