@@ -7,9 +7,9 @@ class AppConstants {
   static const String appName = 'DATAWISE';
   static const String appVersion = '1.0.0';
   static const String dbName = 'datawise.db';
-  static const int dbVersion = 2;
+  static const int dbVersion = 1;
 
-  // Kunci user_settings yang dibekukan
+  // Kunci app_settings yang dibekukan
   static const String keyNotifEnabled = 'notif_enabled'; // '1' / '0'
   static const String keyLastUsageRefresh = 'last_usage_refresh'; // ms UTC
 }
