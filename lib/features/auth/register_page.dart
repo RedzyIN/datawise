@@ -1,175 +1,152 @@
-
+// PEMILIK: Anggota A. Route '/register'.
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'auth_provider.dart';
 import 'auth_validators.dart';
+import 'auth_widgets.dart';
 
-class RegisterPage extends StatelessWidget {
+class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final formKey = GlobalKey<FormState>();
+  State<RegisterPage> createState() => _RegisterPageState();
+}
 
-    String email = '';
-    String password = '';
+class _RegisterPageState extends State<RegisterPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<AuthProvider>().clearError();
+    });
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
+
+    final success = await context.read<AuthProvider>().register(
+      normalizeEmail(_emailController.text),
+      _passwordController.text,
+    );
+
+    // Akun sudah dibuat dan di-logout. Tutup halaman ini agar AuthGate
+    // menampilkan LoginPage. SnackBar tetap tampil karena milik root.
+    if (success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Akun berhasil dibuat. Silakan masuk.')),
+      );
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      appBar: AppBar(),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Form(
-              key: formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Buat Akun',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  const Text(
-                    'Daftar untuk mulai menggunakan DATAWISE',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey),
-                  ),
-
-                  const SizedBox(height: 35),
-
-                  const Text('Email'),
-                  const SizedBox(height: 8),
-
-                  TextFormField(
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: InputDecoration(
-                      hintText: 'Masukkan email',
-                      prefixIcon: const Icon(Icons.email_outlined),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+              key: _formKey,
+              child: AutofillGroup(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Buat Akun',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    validator: validateEmail,
-                    onSaved: (value) {
-                      email = value!.trim();
-                    },
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  const Text('Password'),
-                  const SizedBox(height: 8),
-
-                  TextFormField(
-                    obscureText: true,
-                    decoration: InputDecoration(
-                      hintText: 'Masukkan password',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Daftar untuk mulai menggunakan DATAWISE',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey),
                     ),
-                    validator: validatePassword,
-                    onChanged: (value) {
-                      password = value;
-                    },
-                    onSaved: (value) {
-                      password = value!;
-                    },
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  const Text('Konfirmasi Password'),
-                  const SizedBox(height: 8),
-
-                  TextFormField(
-                    obscureText: true,
-                    decoration: InputDecoration(
-                      hintText: 'Ulangi password',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                    const SizedBox(height: 35),
+                    AuthTextField(
+                      label: 'Email',
+                      hint: 'Masukkan email',
+                      icon: Icons.email_outlined,
+                      controller: _emailController,
+                      validator: validateEmail,
+                      keyboardType: TextInputType.emailAddress,
+                      autofillHints: const [AutofillHints.email],
+                      textInputAction: TextInputAction.next,
+                      onChanged: (_) => auth.clearError(),
                     ),
-                    validator: (value) {
-                      return validateConfirmPassword(
-                        password,
+                    const SizedBox(height: 20),
+                    AuthTextField(
+                      label: 'Password',
+                      hint: 'Masukkan password',
+                      helper: 'Minimal 6 karakter, harus ada huruf dan angka.',
+                      icon: Icons.lock_outline,
+                      isPassword: true,
+                      controller: _passwordController,
+                      validator: validatePassword,
+                      autofillHints: const [AutofillHints.newPassword],
+                      textInputAction: TextInputAction.next,
+                      onChanged: (_) => auth.clearError(),
+                    ),
+                    const SizedBox(height: 20),
+                    AuthTextField(
+                      label: 'Konfirmasi Password',
+                      hint: 'Ulangi password',
+                      icon: Icons.lock_outline,
+                      isPassword: true,
+                      controller: _confirmController,
+                      validator: (value) => validateConfirmPassword(
+                        _passwordController.text,
                         value,
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 28),
-
-                  Consumer<AuthProvider>(
-                    builder: (context, auth, child) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          FilledButton(
-                            onPressed: auth.isLoading
-                                ? null
-                                : () async {
-                                    if (formKey.currentState!.validate()) {
-                                      formKey.currentState!.save();
-
-                                      auth.clearError();
-
-                                      await auth.register(
-                                        email,
-                                        password,
-                                      );
-                                    }
-                                  },
-                            child: auth.isLoading
-                                ? const CircularProgressIndicator(
-                                    color: Colors.white,
-                                  )
-                                : const Text('Daftar'),
-                          ),
-
-                          if (auth.errorMessage != null) ...[
-                            const SizedBox(height: 12),
-                            Text(
-                              auth.errorMessage!,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.red,
-                              ),
-                            ),
-                          ],
-                        ],
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text('Sudah punya akun?'),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pushReplacementNamed(
-                            context,
-                            '/login',
-                          );
-                        },
-                        child: const Text('Masuk'),
                       ),
-                    ],
-                  ),
-                ],
+                      autofillHints: const [AutofillHints.newPassword],
+                      textInputAction: TextInputAction.done,
+                      onChanged: (_) => auth.clearError(),
+                      onSubmitted: (_) => _submit(),
+                    ),
+                    const SizedBox(height: 28),
+                    if (auth.errorMessage != null)
+                      AuthErrorText(auth.errorMessage!),
+                    AuthSubmitButton(
+                      label: 'Daftar',
+                      isLoading: auth.isLoading,
+                      onPressed: _submit,
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Text('Sudah punya akun?'),
+                        TextButton(
+                          // pop, bukan push: kembali ke LoginPage yang sama.
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Masuk'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
