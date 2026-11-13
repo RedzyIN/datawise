@@ -14,6 +14,7 @@ coverage/
 
 # Android
 android/.gradle/
+android/.kotlin/
 android/local.properties
 android/captures/
 android/app/debug/
