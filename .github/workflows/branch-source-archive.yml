@@ -1,0 +1,45 @@
+name: Branch source archive
+
+on:
+  push:
+    branches:
+      - review/database-repository-integrity
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  archive-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create source archive
+        run: |
+          zip -r datawise-review-database-repository-integrity.zip . \
+            -x ".git/*" ".dart_tool/*" "build/*" "android/.gradle/*" ".idea/*"
+
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: datawise-review-database-repository-integrity
+          path: datawise-review-database-repository-integrity.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test
+        run: flutter test
