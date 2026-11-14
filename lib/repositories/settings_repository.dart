@@ -1,5 +1,7 @@
+import '../models/models.dart';
+
 abstract class SettingsRepository {
-  Future<String?> get(String userId, String key);
-  Future<void> set(String userId, String key, String value);
-  Future<void> delete(String userId, String key);
+  Future<UserSetting?> getByUserId(String userId);
+  Future<void> upsert(UserSetting setting);
+  Future<void> delete(String userId);
 }

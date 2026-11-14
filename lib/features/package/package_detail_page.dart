@@ -14,7 +14,7 @@ class PackageDetailPage extends StatefulWidget {
 }
 
 class _PackageDetailPageState extends State<PackageDetailPage> {
-  int? _packageId;
+  String? _packageId;
 
   @override
   void didChangeDependencies() {
@@ -24,7 +24,7 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
 
     final argument = ModalRoute.of(context)?.settings.arguments;
 
-    if (argument is int) {
+    if (argument is String) {
       _packageId = argument;
     }
   }
@@ -47,21 +47,17 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
     return '$day/$month/${date.year}';
   }
 
-  String _formatPrice(int? price) {
-    if (price == null) return 'Tidak dicantumkan';
-
-    final digits = price.toString();
-    final result = StringBuffer();
-
-    for (var i = 0; i < digits.length; i++) {
-      if (i > 0 && (digits.length - i) % 3 == 0) {
-        result.write('.');
-      }
-
-      result.write(digits[i]);
+  String _statusLabel(PackageStatus status) {
+    switch (status) {
+      case PackageStatus.active:
+        return 'Paket Utama';
+      case PackageStatus.inactive:
+        return 'Paket Tambahan';
+      case PackageStatus.expired:
+        return 'Kedaluwarsa';
+      case PackageStatus.archived:
+        return 'Diarsipkan';
     }
-
-    return 'Rp$result';
   }
 
   Future<void> _editPackage(DataPackage package) async {
@@ -98,7 +94,7 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
         return AlertDialog(
           title: const Text('Hapus Paket?'),
           content: Text(
-            'Paket "${package.name}" akan dihapus. '
+            'Paket "${package.packageName}" akan dihapus. '
             'Tindakan ini tidak dapat dibatalkan.',
           ),
           actions: [
@@ -189,8 +185,8 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
           );
         }
 
-        final remainingBytes = (package.totalBytes - package.initialUsedBytes)
-            .clamp(0, package.totalBytes);
+        final currentPackage = package;
+        final isActive = currentPackage.status == PackageStatus.active;
 
         return Scaffold(
           appBar: AppBar(
@@ -200,7 +196,7 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
                 tooltip: 'Edit paket',
                 onPressed: provider.isLoading
                     ? null
-                    : () => _editPackage(package!),
+                    : () => _editPackage(currentPackage),
                 icon: const Icon(Icons.edit),
               ),
             ],
@@ -215,20 +211,19 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        package.name,
+                        currentPackage.packageName,
                         style: Theme.of(context).textTheme.headlineSmall,
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        package.operator,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      Chip(
-                        label: Text(
-                          package.isActive ? 'Paket Utama' : 'Paket Tambahan',
+                      if (currentPackage.operatorName != null &&
+                          currentPackage.operatorName!.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          currentPackage.operatorName!,
+                          style: Theme.of(context).textTheme.titleMedium,
                         ),
-                      ),
+                      ],
+                      const SizedBox(height: 12),
+                      Chip(label: Text(_statusLabel(currentPackage.status))),
                     ],
                   ),
                 ),
@@ -249,18 +244,14 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
                     children: [
                       _buildInfo(
                         label: 'Total Kuota',
-                        value: _formatBytes(package.totalBytes),
+                        value: _formatBytes(
+                          currentPackage.advertisedTotalQuotaBytes,
+                        ),
                       ),
                       const Divider(),
-                      _buildInfo(
-                        label: 'Pemakaian Awal',
-                        value: _formatBytes(package.initialUsedBytes),
-                      ),
+                      _buildInfo(label: 'Pemakaian', value: 'Belum tersedia'),
                       const Divider(),
-                      _buildInfo(
-                        label: 'Sisa Kuota Awal',
-                        value: _formatBytes(remainingBytes),
-                      ),
+                      _buildInfo(label: 'Sisa Kuota', value: 'Belum tersedia'),
                     ],
                   ),
                 ),
@@ -281,17 +272,17 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
                     children: [
                       _buildInfo(
                         label: 'Tanggal Mulai',
-                        value: _formatDate(package.startDate),
+                        value: _formatDate(currentPackage.startDate),
                       ),
                       const Divider(),
                       _buildInfo(
                         label: 'Tanggal Berakhir',
-                        value: _formatDate(package.endDate),
+                        value: _formatDate(currentPackage.endDate),
                       ),
                       const Divider(),
                       _buildInfo(
-                        label: 'Harga',
-                        value: _formatPrice(package.price),
+                        label: 'Status',
+                        value: _statusLabel(currentPackage.status),
                       ),
                     ],
                   ),
@@ -300,11 +291,13 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
 
               const SizedBox(height: 24),
 
-              if (!package.isActive)
+              if (!isActive &&
+                  currentPackage.status != PackageStatus.expired &&
+                  currentPackage.status != PackageStatus.archived)
                 FilledButton.icon(
                   onPressed: provider.isLoading
                       ? null
-                      : () => _setActive(package!),
+                      : () => _setActive(currentPackage),
                   icon: const Icon(Icons.check_circle_outline),
                   label: const Text('Jadikan Paket Utama'),
                 ),
@@ -314,7 +307,7 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
               OutlinedButton.icon(
                 onPressed: provider.isLoading
                     ? null
-                    : () => _editPackage(package!),
+                    : () => _editPackage(currentPackage),
                 icon: const Icon(Icons.edit),
                 label: const Text('Edit Paket'),
               ),
@@ -324,7 +317,7 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
               TextButton.icon(
                 onPressed: provider.isLoading
                     ? null
-                    : () => _deletePackage(package!),
+                    : () => _deletePackage(currentPackage),
                 icon: const Icon(Icons.delete_outline),
                 label: const Text('Hapus Paket'),
                 style: TextButton.styleFrom(

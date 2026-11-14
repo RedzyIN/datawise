@@ -17,7 +17,9 @@ class PackageProvider extends ChangeNotifier {
 
   DataPackage? get activePackage {
     for (final package in _packages) {
-      if (package.isActive) return package;
+      if (package.status == PackageStatus.active) {
+        return package;
+      }
     }
     return null;
   }
@@ -51,45 +53,45 @@ class PackageProvider extends ChangeNotifier {
   }
 
   // Menambahkan paket baru.
-  Future<bool> addPackage(DataPackage p) async {
+  Future<bool> addPackage(DataPackage package) async {
     return _run(() async {
-      PackageValidator.validate(p);
+      PackageValidator.validate(package);
 
-      await _repository.add(p);
+      await _repository.add(package);
 
-      _packages = await _repository.getAll(p.userId);
+      _packages = await _repository.getAll(package.userId);
     });
   }
 
   // Memperbarui informasi paket.
-  Future<bool> updatePackage(DataPackage p) async {
+  Future<bool> updatePackage(DataPackage package) async {
     return _run(() async {
-      PackageValidator.validate(p);
+      PackageValidator.validate(package);
 
-      if (p.id == null) {
+      if (package.id == null || package.id!.trim().isEmpty) {
         throw const AppException(
           AppException.validation,
           'ID paket tidak ditemukan.',
         );
       }
 
-      await _repository.update(p);
+      await _repository.update(package);
 
-      _packages = await _repository.getAll(p.userId);
+      _packages = await _repository.getAll(package.userId);
     });
   }
 
   // Menghapus paket.
-  Future<bool> deletePackage(int id, String userId) async {
+  Future<bool> deletePackage(String packageId, String userId) async {
     return _run(() async {
-      if (id <= 0 || userId.trim().isEmpty) {
+      if (packageId.trim().isEmpty || userId.trim().isEmpty) {
         throw const AppException(
           AppException.validation,
           'Data paket tidak valid.',
         );
       }
 
-      final package = await _repository.getById(id);
+      final package = await _repository.getById(packageId);
 
       if (package == null || package.userId != userId) {
         throw const AppException(
@@ -98,16 +100,16 @@ class PackageProvider extends ChangeNotifier {
         );
       }
 
-      await _repository.delete(id);
+      await _repository.delete(packageId);
 
       _packages = await _repository.getAll(userId);
     });
   }
 
   // Menjadikan paket sebagai paket aktif.
-  Future<void> setActive(String userId, int packageId) async {
+  Future<void> setActive(String userId, String packageId) async {
     await _run(() async {
-      if (userId.trim().isEmpty || packageId <= 0) {
+      if (userId.trim().isEmpty || packageId.trim().isEmpty) {
         throw const AppException(
           AppException.validation,
           'Data paket tidak valid.',

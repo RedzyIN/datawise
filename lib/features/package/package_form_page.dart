@@ -19,8 +19,6 @@ class _PackageFormPageState extends State<PackageFormPage> {
   final _nameController = TextEditingController();
   final _operatorController = TextEditingController();
   final _totalQuotaController = TextEditingController();
-  final _initialUsedController = TextEditingController(text: '0');
-  final _priceController = TextEditingController();
 
   DataPackage? _editing;
   bool _initialized = false;
@@ -43,16 +41,14 @@ class _PackageFormPageState extends State<PackageFormPage> {
     if (_editing != null) {
       final package = _editing!;
 
-      _nameController.text = package.name;
-      _operatorController.text = package.operator;
-      _totalQuotaController.text = (package.totalBytes / 1000000000).toString();
-      _initialUsedController.text = (package.initialUsedBytes / 1000000000)
-          .toString();
-      _priceController.text = package.price?.toString() ?? '';
+      _nameController.text = package.packageName;
+      _operatorController.text = package.operatorName ?? '';
+      _totalQuotaController.text =
+          (package.advertisedTotalQuotaBytes / 1000000000).toString();
 
       _startDate = DateUtils.dateOnly(package.startDate);
       _endDate = DateUtils.dateOnly(package.endDate);
-      _isActive = package.isActive;
+      _isActive = package.status == PackageStatus.active;
     } else {
       final provider = context.read<PackageProvider>();
       _isActive = provider.activePackage == null;
@@ -64,8 +60,6 @@ class _PackageFormPageState extends State<PackageFormPage> {
     _nameController.dispose();
     _operatorController.dispose();
     _totalQuotaController.dispose();
-    _initialUsedController.dispose();
-    _priceController.dispose();
     super.dispose();
   }
 
@@ -88,10 +82,8 @@ class _PackageFormPageState extends State<PackageFormPage> {
     setState(() {
       _startDate = DateUtils.dateOnly(selected);
 
-      // Jika tanggal mulai melewati tanggal berakhir,
-      // sesuaikan tanggal berakhir menjadi 30 hari setelahnya.
-      if (!_endDate.isAfter(_startDate)) {
-        _endDate = _startDate.add(const Duration(days: 30));
+      if (_endDate.isBefore(_startDate)) {
+        _endDate = _startDate;
       }
     });
   }
@@ -99,8 +91,8 @@ class _PackageFormPageState extends State<PackageFormPage> {
   Future<void> _selectEndDate() async {
     final selected = await showDatePicker(
       context: context,
-      initialDate: _endDate,
-      firstDate: _startDate.add(const Duration(days: 1)),
+      initialDate: _endDate.isBefore(_startDate) ? _startDate : _endDate,
+      firstDate: _startDate,
       lastDate: DateTime(2100),
     );
 
@@ -118,40 +110,15 @@ class _PackageFormPageState extends State<PackageFormPage> {
     return null;
   }
 
-  String? _validateQuota(String? value, String label) {
+  String? _validateTotalQuota(String? value) {
     if (value == null || value.trim().isEmpty) {
-      return '$label wajib diisi.';
+      return 'Total kuota wajib diisi.';
     }
 
     final number = double.tryParse(value.replaceAll(',', '.'));
 
-    if (number == null || !number.isFinite || number < 0) {
-      return '$label harus berupa angka yang valid.';
-    }
-
-    return null;
-  }
-
-  String? _validateTotalQuota(String? value) {
-    final error = _validateQuota(value, 'Total kuota');
-    if (error != null) return error;
-
-    final number = double.parse(value!.replaceAll(',', '.'));
-
-    if (number <= 0) {
-      return 'Total kuota harus lebih dari 0 GB.';
-    }
-
-    return null;
-  }
-
-  String? _validatePrice(String? value) {
-    if (value == null || value.trim().isEmpty) return null;
-
-    final price = int.tryParse(value);
-
-    if (price == null || price < 0) {
-      return 'Harga harus berupa bilangan bulat positif.';
+    if (number == null || !number.isFinite || number <= 0) {
+      return 'Total kuota harus berupa angka lebih dari 0 GB.';
     }
 
     return null;
@@ -174,28 +141,31 @@ class _PackageFormPageState extends State<PackageFormPage> {
       _totalQuotaController.text.replaceAll(',', '.'),
     );
 
-    final initialUsed = double.parse(
-      _initialUsedController.text.replaceAll(',', '.'),
-    );
-
     final totalBytes = (totalQuota * 1000000000).round();
-    final initialUsedBytes = (initialUsed * 1000000000).round();
 
     final now = DateTime.now();
+
+    final PackageStatus status;
+
+    if (_isActive) {
+      status = PackageStatus.active;
+    } else if (_editing?.status == PackageStatus.active) {
+      status = PackageStatus.inactive;
+    } else {
+      status = _editing?.status ?? PackageStatus.inactive;
+    }
+
+    final operatorName = _operatorController.text.trim();
 
     final package = DataPackage(
       id: _editing?.id,
       userId: userId,
-      name: _nameController.text.trim(),
-      operator: _operatorController.text.trim(),
-      totalBytes: totalBytes,
-      initialUsedBytes: initialUsedBytes,
+      packageName: _nameController.text.trim(),
+      operatorName: operatorName.isEmpty ? null : operatorName,
+      advertisedTotalQuotaBytes: totalBytes,
       startDate: _startDate,
       endDate: _endDate,
-      price: _priceController.text.trim().isEmpty
-          ? null
-          : int.parse(_priceController.text),
-      isActive: _isActive,
+      status: status,
       createdAt: _editing?.createdAt ?? now,
       updatedAt: now,
     );
@@ -285,9 +255,8 @@ class _PackageFormPageState extends State<PackageFormPage> {
 
                 _buildTextField(
                   controller: _operatorController,
-                  label: 'Operator',
+                  label: 'Operator (Opsional)',
                   hint: 'Contoh: Telkomsel',
-                  validator: (value) => _requiredText(value, 'Operator'),
                 ),
                 const SizedBox(height: 16),
 
@@ -299,33 +268,9 @@ class _PackageFormPageState extends State<PackageFormPage> {
                     decimal: true,
                   ),
                   validator: _validateTotalQuota,
-                ),
-                const SizedBox(height: 16),
-
-                _buildTextField(
-                  controller: _initialUsedController,
-                  label: 'Pemakaian Awal (GB)',
-                  hint: 'Contoh: 2',
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  validator: (value) {
-                    final error = _validateQuota(value, 'Pemakaian awal');
-
-                    if (error != null) return error;
-
-                    final used = double.parse(value!.replaceAll(',', '.'));
-
-                    final total = double.parse(
-                      _totalQuotaController.text.replaceAll(',', '.'),
-                    );
-
-                    if (used > total) {
-                      return 'Pemakaian awal melebihi total kuota.';
-                    }
-
-                    return null;
-                  },
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]')),
+                  ],
                 ),
                 const SizedBox(height: 16),
 
@@ -347,16 +292,6 @@ class _PackageFormPageState extends State<PackageFormPage> {
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 16),
-
-                _buildTextField(
-                  controller: _priceController,
-                  label: 'Harga Paket (Opsional)',
-                  hint: 'Contoh: 50000',
-                  keyboardType: TextInputType.number,
-                  validator: _validatePrice,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 ),
                 const SizedBox(height: 16),
 

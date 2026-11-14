@@ -49,7 +49,11 @@ class _PackageListPageState extends State<PackageListPage> {
     final today = DateUtils.dateOnly(DateTime.now());
     final endDate = DateUtils.dateOnly(package.endDate);
 
-    return endDate.isBefore(today);
+    return package.status == PackageStatus.expired || endDate.isBefore(today);
+  }
+
+  bool _isArchived(DataPackage package) {
+    return package.status == PackageStatus.archived;
   }
 
   Future<void> _openForm() async {
@@ -74,10 +78,15 @@ class _PackageListPageState extends State<PackageListPage> {
     return Consumer<PackageProvider>(
       builder: (context, provider, child) {
         final activePackages = provider.packages
-            .where((p) => !_isExpired(p))
+            .where((package) => !_isExpired(package) && !_isArchived(package))
             .toList();
 
-        final expiredPackages = provider.packages.where(_isExpired).toList();
+        final expiredPackages = provider.packages
+            .where(_isExpired)
+            .where((package) => !_isArchived(package))
+            .toList();
+
+        final archivedPackages = provider.packages.where(_isArchived).toList();
 
         return Column(
           children: [
@@ -103,7 +112,12 @@ class _PackageListPageState extends State<PackageListPage> {
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _loadPackages,
-                child: _buildContent(provider, activePackages, expiredPackages),
+                child: _buildContent(
+                  provider,
+                  activePackages,
+                  expiredPackages,
+                  archivedPackages,
+                ),
               ),
             ),
           ],
@@ -116,6 +130,7 @@ class _PackageListPageState extends State<PackageListPage> {
     PackageProvider provider,
     List<DataPackage> activePackages,
     List<DataPackage> expiredPackages,
+    List<DataPackage> archivedPackages,
   ) {
     if (provider.isLoading && provider.packages.isEmpty) {
       return const Center(child: CircularProgressIndicator());
@@ -168,6 +183,10 @@ class _PackageListPageState extends State<PackageListPage> {
         const SizedBox(height: 24),
 
         _buildSection(title: 'Paket Kedaluwarsa', packages: expiredPackages),
+
+        const SizedBox(height: 24),
+
+        _buildSection(title: 'Paket Diarsipkan', packages: archivedPackages),
       ],
     );
   }
@@ -198,28 +217,44 @@ class _PackageListPageState extends State<PackageListPage> {
 
   Widget _buildPackageCard(DataPackage package) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isActive = package.status == PackageStatus.active;
+    final isExpired = _isExpired(package);
+
+    final statusLabel = switch (package.status) {
+      PackageStatus.active => 'Paket utama',
+      PackageStatus.inactive => 'Paket tambahan',
+      PackageStatus.expired => 'Kedaluwarsa',
+      PackageStatus.archived => 'Diarsipkan',
+    };
+
+    final statusColor = isExpired
+        ? colorScheme.error
+        : isActive
+        ? colorScheme.primary
+        : colorScheme.outline;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
         onTap: () => _openDetail(package),
-        leading: Icon(
-          Icons.sim_card,
-          color: package.isActive ? colorScheme.primary : colorScheme.outline,
-          size: 32,
+        leading: Icon(Icons.sim_card, color: statusColor, size: 32),
+        title: Text(
+          package.packageName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
-        title: Text(package.name, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(package.operator),
+            if (package.operatorName != null &&
+                package.operatorName!.isNotEmpty)
+              Text(package.operatorName!),
             Text(
-              '${_formatBytes(package.totalBytes)} • '
+              '${_formatBytes(package.advertisedTotalQuotaBytes)} • '
               '${_formatDate(package.startDate)} - '
               '${_formatDate(package.endDate)}',
             ),
-            if (package.isActive)
-              Text('Paket utama', style: TextStyle(color: colorScheme.primary)),
+            Text(statusLabel, style: TextStyle(color: statusColor)),
           ],
         ),
         trailing: const Icon(Icons.chevron_right),
