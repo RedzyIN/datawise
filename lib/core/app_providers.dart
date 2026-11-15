@@ -15,7 +15,8 @@ List<SingleChildWidget> buildAppProviders() {
   // --- Repository SQLite (penyimpanan permanen lokal) ---
   final PackageRepository packageRepo = SqlitePackageRepository();
   final QuotaCategoryRepository categoryRepo = SqliteQuotaCategoryRepository();
-  final ClassificationRuleRepository ruleRepo = SqliteClassificationRuleRepository();
+  final ClassificationRuleRepository ruleRepo =
+      SqliteClassificationRuleRepository();
   final UsageRepository usageRepo = SqliteUsageRepository();
   final DataLimitRepository dataLimitRepo = SqliteDataLimitRepository();
   final AlertRepository alertRepo = SqliteAlertRepository();
@@ -39,12 +40,18 @@ List<SingleChildWidget> buildAppProviders() {
     Provider<AlertService>.value(value: alertService),
 
     // --- Provider (ChangeNotifier) ---
-    ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider(authService)),
-    ChangeNotifierProvider<PackageProvider>(create: (_) => PackageProvider(packageRepo)),
+    ChangeNotifierProvider<AuthProvider>(
+      create: (_) => AuthProvider(authService),
+    ),
+    ChangeNotifierProvider<PackageProvider>(
+      create: (_) => PackageProvider(packageRepo),
+    ),
     ChangeNotifierProvider<UsageProvider>(
-        create: (_) => UsageProvider(usageService, usageRepo, packageRepo)),
+      create: (_) => UsageProvider(usageService, usageRepo, packageRepo),
+    ),
     ChangeNotifierProvider<DashboardProvider>(
-        create: (_) =>
-            DashboardProvider(packageRepo, usageRepo, usageService, alertService)),
+      create: (_) =>
+          DashboardProvider(packageRepo, usageRepo, usageService, alertService),
+    ),
   ];
 }

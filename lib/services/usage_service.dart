@@ -159,7 +159,11 @@ class UsageServiceImpl implements UsageService {
         UsageSource.auto,
       );
 
-      await _settingsRepo.set('last_usage_refresh', timeToMs(now).toString());
+      await _settingsRepo.set(
+        package.userId,
+        'last_usage_refresh',
+        timeToMs(now).toString(),
+      );
 
       return reading;
     } catch (e) {
