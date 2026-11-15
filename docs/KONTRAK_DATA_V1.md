@@ -3,7 +3,7 @@
 Status: kontrak acuan untuk seluruh anggota.  
 Target branch: `develop` melalui pull request.  
 Platform: Android, minSdk 29.  
-Database: SQLite `datawise.db`, versi skema 1.  
+Kontrak data: v1.0. Database SQLite `datawise.db`, versi skema implementasi 2. Versi skema 2 digunakan untuk migrasi dari scaffold lama, bukan perubahan kontrak data.  
 Satuan kuota dan pemakaian: byte desimal, 1 GB = 1.000.000.000 byte.
 
 Dokumen ini menjadi satu-satunya acuan untuk struktur database, bentuk model Dart, dan antarmuka repository. Jika ada dokumen anggota atau kode lama yang berbeda, ikuti dokumen ini. Jangan mengubah nama field, tipe data, enum, atau tanda tangan method tanpa persetujuan arsitek dan pembaruan versi kontrak.
@@ -22,6 +22,8 @@ Dokumen ini menjadi satu-satunya acuan untuk struktur database, bentuk model Dar
 10. Database lokal tetap menjadi sumber data operasional. Firebase hanya untuk autentikasi pada MVP, tanpa Firestore atau sinkronisasi cloud.
 
 ## 2. Database v1
+
+Catatan versi: istilah Database v1 pada bagian ini merujuk pada kontrak data v1.0. Implementasi SQLite menggunakan `dbVersion = 2` karena skema scaffold lama perlu dimigrasikan ke delapan tabel kontrak.
 
 Delapan tabel berikut wajib tersedia. Nama kolom menggunakan snake_case.
 
