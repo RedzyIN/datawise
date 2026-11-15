@@ -94,7 +94,7 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
         return AlertDialog(
           title: const Text('Arsipkan Paket?'),
           content: Text(
-            'Paket "' + package.packageName + '" akan dipindahkan ke arsip. '
+            'Paket "${package.packageName}" akan dipindahkan ke arsip. '
             'Kategori, catatan penggunaan, aturan, dan riwayat notifikasi tetap disimpan.',
           ),
           actions: [
