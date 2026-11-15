@@ -10,6 +10,7 @@ void main() {
   late SqlitePackageRepository packages;
   late SqliteQuotaCategoryRepository categories;
   late SqliteUsageRepository usage;
+  late SqliteClassificationRuleRepository dbRules;
 
   const userId = 'user-1';
 
@@ -27,6 +28,7 @@ void main() {
     packages = SqlitePackageRepository(helper);
     categories = SqliteQuotaCategoryRepository(helper);
     usage = SqliteUsageRepository(helper);
+    dbRules = SqliteClassificationRuleRepository(helper);
 
     // Skema v3 mewajibkan pengguna tersedia sebelum paket dibuat.
     final db = await helper.database;
@@ -249,6 +251,45 @@ void main() {
     );
   });
 
+  test('classification rule order honors PRD priority and specificity', () async {
+    final packageId = await packages.add(samplePackage());
+    final main = (await categories.getByPackage(packageId)).single;
+    final now = DateTime(2026, 11, 15);
+
+    await dbRules.add(ClassificationRule(
+      id: 'rule-general',
+      quotaCategoryId: main.id!,
+      ruleName: 'Semua aplikasi',
+      priority: 100,
+      isEnabled: true,
+      createdAt: now,
+    ));
+    await dbRules.add(ClassificationRule(
+      id: 'rule-specific',
+      quotaCategoryId: main.id!,
+      ruleName: 'Aplikasi tertentu',
+      appPackageName: 'com.example.app',
+      endMinute: 1440,
+      priority: 100,
+      isEnabled: true,
+      createdAt: now,
+    ));
+    await dbRules.add(ClassificationRule(
+      id: 'rule-higher',
+      quotaCategoryId: main.id!,
+      ruleName: 'Prioritas tertinggi',
+      priority: 200,
+      isEnabled: true,
+      createdAt: now,
+    ));
+
+    final ordered = await dbRules.getByPackage(packageId);
+    expect(
+      ordered.map((rule) => rule.id).toList(),
+      ['rule-higher', 'rule-specific', 'rule-general'],
+    );
+  });
+
   test(
     'usage records from automatic and manual sources stay separate',
     () async {
@@ -397,6 +438,45 @@ void main() {
     );
 
     expect(await usage.getRecords(packageId), isEmpty);
+  });
+
+  test('category with allocation cannot be deleted', () async {
+    final packageId = await packages.add(samplePackage());
+    final now = DateTime(2026, 11, 12);
+    final categoryId = await categories.add(
+      QuotaCategory(
+        packageId: packageId,
+        categoryName: 'Kuota Sosial',
+        categoryType: QuotaCategoryType.social,
+        capacityBytes: 5000000000,
+        isEnabled: true,
+        createdAt: now,
+      ),
+    );
+
+    await usage.upsertRecordWithAllocations(
+      sampleUsage(
+        packageId: packageId,
+        scope: UsageRecordScope.appUsage,
+        appPackageName: 'com.example.app',
+      ),
+      (recordId) => [
+        UsageAllocation(
+          packageId: packageId,
+          usageRecordId: recordId,
+          quotaCategoryId: categoryId,
+          allocatedBytes: 1000,
+          allocationMethod: AllocationMethod.manualUser,
+          createdAt: now,
+        ),
+      ],
+    );
+
+    await expectLater(
+      categories.delete(categoryId),
+      throwsA(isA<AppException>()),
+    );
+    expect(await categories.getById(categoryId), isNotNull);
   });
 
   test('app usage allocations can be saved and retrieved', () async {

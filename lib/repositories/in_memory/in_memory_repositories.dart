@@ -241,16 +241,26 @@ class InMemoryQuotaCategoryRepository implements QuotaCategoryRepository {
     packages.addAddListener(_createMainCategory);
     packages.addUpdateListener(_handlePackageUpdate);
     packages.addDeleteListener(_handlePackageDelete);
+
+    // Also handle packages created before this repository was constructed.
+    for (final package in packages._items.values) {
+      _createMainCategory(package);
+    }
   }
 
   final InMemoryPackageRepository packages;
   final Map<String, QuotaCategory> items = {};
   final List<void Function(String)> _deleteListeners = [];
+  final List<bool Function(String)> _deleteGuards = [];
 
   int _nextId = 1;
 
   void addDeleteListener(void Function(String) listener) {
     _deleteListeners.add(listener);
+  }
+
+  void addDeleteGuard(bool Function(String) guard) {
+    _deleteGuards.add(guard);
   }
 
   void _createMainCategory(DataPackage package) {
@@ -441,6 +451,13 @@ class InMemoryQuotaCategoryRepository implements QuotaCategoryRepository {
       );
     }
 
+    if (_deleteGuards.any((guard) => !guard(categoryId))) {
+      throw const AppException(
+        AppException.validation,
+        'Kategori masih digunakan oleh aturan klasifikasi atau alokasi penggunaan.',
+      );
+    }
+
     final main = items.values
         .where(
           (item) =>
@@ -493,6 +510,11 @@ class InMemoryClassificationRuleRepository
   InMemoryClassificationRuleRepository(this.packages, this.categories) {
     packages.addDeleteListener(_handlePackageDelete);
     categories.addDeleteListener(_handleCategoryDelete);
+    categories.addDeleteGuard(
+      (categoryId) => !items.values.any(
+        (rule) => rule.quotaCategoryId == categoryId,
+      ),
+    );
   }
 
   final InMemoryPackageRepository packages;
@@ -624,6 +646,11 @@ class InMemoryUsageRepository implements UsageRepository {
   InMemoryUsageRepository(this.packages, [this.categories, this.rules]) {
     packages.addDeleteListener(_handlePackageDelete);
     categories?.addDeleteListener(_handleCategoryDelete);
+    categories?.addDeleteGuard(
+      (categoryId) => !allocations.values.any(
+        (allocation) => allocation.quotaCategoryId == categoryId,
+      ),
+    );
   }
 
   final InMemoryPackageRepository packages;

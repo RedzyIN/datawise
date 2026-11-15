@@ -108,6 +108,50 @@ void main() {
     });
   });
 
+  group('InMemoryClassificationRuleRepository', () {
+    test('classification rules order honors priority and specificity', () async {
+      final packages = InMemoryPackageRepository();
+      final categories = InMemoryQuotaCategoryRepository(packages);
+      final packageId = await packages.add(createPackage());
+      final main = (await categories.getByPackage(packageId)).single;
+      final rules = InMemoryClassificationRuleRepository(packages, categories);
+      final now = DateTime(2026, 11, 15);
+
+      await rules.add(ClassificationRule(
+        id: 'rule-general',
+        quotaCategoryId: main.id!,
+        ruleName: 'Semua aplikasi',
+        priority: 100,
+        isEnabled: true,
+        createdAt: now,
+      ));
+      await rules.add(ClassificationRule(
+        id: 'rule-specific',
+        quotaCategoryId: main.id!,
+        ruleName: 'Aplikasi tertentu',
+        appPackageName: 'com.example.app',
+        endMinute: 1440,
+        priority: 100,
+        isEnabled: true,
+        createdAt: now,
+      ));
+      await rules.add(ClassificationRule(
+        id: 'rule-higher',
+        quotaCategoryId: main.id!,
+        ruleName: 'Prioritas tertinggi',
+        priority: 200,
+        isEnabled: true,
+        createdAt: now,
+      ));
+
+      final ordered = await rules.getByPackage(packageId);
+      expect(
+        ordered.map((rule) => rule.id).toList(),
+        ['rule-higher', 'rule-specific', 'rule-general'],
+      );
+    });
+  });
+
   group('InMemoryUsageRepository', () {
     test('catatan otomatis dan manual dapat disimpan terpisah', () async {
       final packages = InMemoryPackageRepository();
@@ -261,6 +305,47 @@ void main() {
       );
 
       expect(await usage.getRecords(packageId), isEmpty);
+    });
+
+    test('kategori dengan alokasi tidak dapat dihapus', () async {
+      final packages = InMemoryPackageRepository();
+      final categories = InMemoryQuotaCategoryRepository(packages);
+      final packageId = await packages.add(createPackage());
+      final now = DateTime(2026, 11, 12);
+      final categoryId = await categories.add(
+        QuotaCategory(
+          packageId: packageId,
+          categoryName: 'Kuota Sosial',
+          categoryType: QuotaCategoryType.social,
+          capacityBytes: 1000000000,
+          isEnabled: true,
+          createdAt: now,
+        ),
+      );
+      final usage = InMemoryUsageRepository(packages, categories);
+      final recordId = await usage.upsertRecordWithAllocations(
+        createUsageRecord(
+          packageId: packageId,
+          scope: UsageRecordScope.appUsage,
+        ),
+        (recordId) => [
+          UsageAllocation(
+            packageId: packageId,
+            usageRecordId: recordId,
+            quotaCategoryId: categoryId,
+            allocatedBytes: 100,
+            allocationMethod: AllocationMethod.manualUser,
+            createdAt: now,
+          ),
+        ],
+      );
+
+      await expectLater(
+        categories.delete(categoryId),
+        throwsA(isA<AppException>()),
+      );
+      expect(await categories.getById(categoryId), isNotNull);
+      expect(await usage.getAllocations(recordId), hasLength(1));
     });
 
     test('menghapus paket ikut menghapus catatan dan alokasi', () async {
