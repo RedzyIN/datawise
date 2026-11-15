@@ -396,20 +396,17 @@ void main() {
       ),
     );
 
-    final recordId = await usage.upsertRecord(
-      sampleUsage(
-        packageId: packageId,
-        scope: UsageRecordScope.appUsage,
-        appPackageName: 'com.example.app',
-      ),
+    final record = sampleUsage(
+      packageId: packageId,
+      scope: UsageRecordScope.appUsage,
+      appPackageName: 'com.example.app',
     );
-
-    await usage.replaceAllocations(recordId, [
+    final recordId = await usage.upsertRecordWithAllocations(record, [
       UsageAllocation(
         packageId: packageId,
         usageRecordId: recordId,
         quotaCategoryId: categoryId,
-        allocatedBytes: 500,
+        allocatedBytes: 1000,
         allocationMethod: AllocationMethod.manualUser,
         createdAt: now,
       ),
@@ -425,18 +422,15 @@ void main() {
   test('allocation cannot exceed usage record total', () async {
     final packageId = await packages.add(samplePackage());
 
-    final recordId = await usage.upsertRecord(
-      sampleUsage(
-        packageId: packageId,
-        scope: UsageRecordScope.appUsage,
-        appPackageName: 'com.example.app',
-      ),
+    final record = sampleUsage(
+      packageId: packageId,
+      scope: UsageRecordScope.appUsage,
+      appPackageName: 'com.example.app',
     );
-
     final now = DateTime(2026, 11, 12);
 
     expect(
-      () => usage.replaceAllocations(recordId, [
+      () => usage.upsertRecordWithAllocations(record, [
         UsageAllocation(
           packageId: packageId,
           usageRecordId: recordId,
@@ -447,6 +441,30 @@ void main() {
       ]),
       throwsA(isA<AppException>()),
     );
+  });
+
+
+  test('allocation total must equal usage record total', () async {
+    final packageId = await packages.add(samplePackage());
+    final record = sampleUsage(
+      packageId: packageId,
+      scope: UsageRecordScope.appUsage,
+      appPackageName: 'com.example.app',
+    );
+
+    await expectLater(
+      usage.upsertRecordWithAllocations(record, [
+        UsageAllocation(
+          packageId: packageId,
+          usageRecordId: 'temporary',
+          allocatedBytes: 999,
+          allocationMethod: AllocationMethod.unclassified,
+          createdAt: DateTime(2026, 11, 12),
+        ),
+      ]),
+      throwsA(isA<AppException>()),
+    );
+    expect(await usage.getRecords(packageId), isEmpty);
   });
 
   test('device total records cannot have allocations', () async {

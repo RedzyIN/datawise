@@ -98,6 +98,85 @@ class SqliteUserRepository implements UserRepository {
   }
 }
 
+
+Future<String> _upsertUsageRecord(
+  DatabaseExecutor txn,
+  UsageRecord record,
+) async {
+  final packageRows = await txn.query(
+    'data_packages',
+    columns: ['id'],
+    where: 'id = ?',
+    whereArgs: [record.packageId],
+    limit: 1,
+  );
+
+  if (packageRows.isEmpty) {
+    throw const AppException(AppException.notFound, 'Paket tidak ditemukan.');
+  }
+
+  Map<String, Object?>? matchingSourceKey;
+  if (record.sourceKey != null) {
+    final rows = await txn.query(
+      'usage_records',
+      where: 'source_key = ?',
+      whereArgs: [record.sourceKey],
+      limit: 1,
+    );
+    if (rows.isNotEmpty) matchingSourceKey = rows.first;
+  }
+
+  if (matchingSourceKey != null) {
+    final packageId = matchingSourceKey['package_id'] as String;
+    final sourceId = matchingSourceKey['id'] as String;
+    if (packageId != record.packageId) {
+      throw const AppException(
+        AppException.validation,
+        'Source key sudah digunakan oleh paket lain.',
+      );
+    }
+    if (record.id != null && record.id != sourceId) {
+      throw const AppException(
+        AppException.validation,
+        'Source key sudah digunakan oleh catatan lain.',
+      );
+    }
+  }
+
+  final existingId = record.id ?? matchingSourceKey?['id'] as String?;
+  if (existingId != null) {
+    final existingRows = await txn.query(
+      'usage_records',
+      columns: ['package_id'],
+      where: 'id = ?',
+      whereArgs: [existingId],
+      limit: 1,
+    );
+    if (existingRows.isNotEmpty &&
+        existingRows.first['package_id'] != record.packageId) {
+      throw const AppException(
+        AppException.validation,
+        'Catatan pemakaian tidak dapat dipindahkan ke paket lain.',
+      );
+    }
+  }
+
+  final id = existingId ?? _newSqlId('usage');
+  final values = {...record.toMap(), 'id': id};
+  if (existingId != null) {
+    final updated = await txn.update(
+      'usage_records',
+      values,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (updated == 0) await txn.insert('usage_records', values);
+  } else {
+    await txn.insert('usage_records', values);
+  }
+  return id;
+}
+
 class SqlitePackageRepository implements PackageRepository {
   SqlitePackageRepository([DbHelper? helper]) : h = helper ?? DbHelper.instance;
 
@@ -873,6 +952,15 @@ class SqliteUsageRepository implements UsageRepository {
       );
     }
 
+
+    if ((record.source == UsageSource.manual) !=
+        (record.recordScope == UsageRecordScope.manualTotal)) {
+      throw const AppException(
+        AppException.validation,
+        'Sumber MANUAL hanya boleh digunakan untuk MANUAL_TOTAL.',
+      );
+    }
+
     if (record.recordScope == UsageRecordScope.appUsage &&
         (record.appPackageName == null ||
             record.appPackageName!.trim().isEmpty)) {
@@ -883,105 +971,74 @@ class SqliteUsageRepository implements UsageRepository {
     }
   }
 
+
   @override
   Future<String> upsertRecord(UsageRecord record) async {
     _validateRecord(record);
 
-    final db = await h.database;
-
-    return db.transaction((txn) async {
-      // Pastikan paket tujuan tersedia.
-      final packageRows = await txn.query(
-        'data_packages',
-        columns: ['id'],
-        where: 'id = ?',
-        whereArgs: [record.packageId],
+    final chargeable =
+        record.networkType != NetworkType.wifi &&
+        (record.recordScope == UsageRecordScope.appUsage ||
+            record.recordScope == UsageRecordScope.manualTotal);
+    if (chargeable) {
+      throw const AppException(
+        AppException.validation,
+        'Catatan penggunaan ini harus disimpan bersama alokasinya.',
       );
+    }
 
-      if (packageRows.isEmpty) {
-        throw const AppException(
-          AppException.notFound,
-          'Paket tidak ditemukan.',
-        );
-      }
+    return (await h.database).transaction(
+      (txn) => _upsertUsageRecord(txn, record),
+    );
+  }
 
-      // Cari sourceKey secara global, bukan berdasarkan package_id.
-      Map<String, Object?>? matchingSourceKey;
+  @override
+  Future<String> upsertRecordWithAllocations(
+    UsageRecord record,
+    List<UsageAllocation> allocations,
+  ) async {
+    _validateRecord(record);
+    if (record.recordScope == UsageRecordScope.deviceTotal ||
+        record.networkType == NetworkType.wifi) {
+      throw const AppException(
+        AppException.validation,
+        'Catatan agregat perangkat atau Wi-Fi tidak dapat dialokasikan.',
+      );
+    }
 
-      if (record.sourceKey != null) {
-        final rows = await txn.query(
+    final db = await h.database;
+    return db.transaction((txn) async {
+      String? previousId = record.id;
+      if (previousId == null && record.sourceKey != null) {
+        final existing = await txn.query(
           'usage_records',
+          columns: ['id'],
           where: 'source_key = ?',
           whereArgs: [record.sourceKey],
           limit: 1,
         );
-
-        if (rows.isNotEmpty) {
-          matchingSourceKey = rows.first;
-        }
+        if (existing.isNotEmpty) previousId = existing.first['id'] as String;
       }
 
-      // Source key yang sudah dimiliki paket lain tidak boleh digunakan.
-      if (matchingSourceKey != null) {
-        final existingPackageId = matchingSourceKey['package_id'] as String;
-        final existingSourceId = matchingSourceKey['id'] as String;
-
-        if (existingPackageId != record.packageId) {
-          throw const AppException(
-            AppException.validation,
-            'Source key sudah digunakan oleh paket lain.',
-          );
-        }
-
-        if (record.id != null && record.id != existingSourceId) {
-          throw const AppException(
-            AppException.validation,
-            'Source key sudah digunakan oleh catatan lain.',
-          );
-        }
-      }
-
-      // Tentukan ID catatan yang akan diperbarui atau dibuat.
-      final existingId = record.id ?? matchingSourceKey?['id'] as String?;
-
-      // Jika ID diberikan, pastikan catatan tersebut memang milik paket ini.
-      if (existingId != null) {
-        final existingRows = await txn.query(
-          'usage_records',
-          columns: ['package_id'],
-          where: 'id = ?',
-          whereArgs: [existingId],
-          limit: 1,
+      // Remove previous allocations before updating source bytes. Invalid
+      // replacement data rolls the whole transaction back.
+      if (previousId != null) {
+        await txn.delete(
+          'usage_allocations',
+          where: 'usage_record_id = ?',
+          whereArgs: [previousId],
         );
-
-        if (existingRows.isNotEmpty &&
-            existingRows.first['package_id'] != record.packageId) {
-          throw const AppException(
-            AppException.validation,
-            'Catatan pemakaian tidak dapat dipindahkan ke paket lain.',
-          );
-        }
       }
 
-      final id = existingId ?? _newSqlId('usage');
-
-      final values = {...record.toMap(), 'id': id};
-
-      if (existingId != null) {
-        final affectedRows = await txn.update(
-          'usage_records',
-          values,
-          where: 'id = ?',
-          whereArgs: [id],
-        );
-
-        if (affectedRows == 0) {
-          await txn.insert('usage_records', values);
-        }
-      } else {
-        await txn.insert('usage_records', values);
-      }
-
+      final id = await _upsertUsageRecord(txn, record);
+      final rows = await txn.query(
+        'usage_records',
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      final saved = UsageRecord.fromMap(rows.single);
+      await _replaceAllocationsInTransaction(txn, saved, id, allocations);
       return id;
     });
   }
@@ -1062,106 +1119,154 @@ class SqliteUsageRepository implements UsageRepository {
     return rows.map(UsageRecord.fromMap).toList();
   }
 
+
+  Future<void> _replaceAllocationsInTransaction(
+    DatabaseExecutor tx,
+    UsageRecord record,
+    String usageRecordId,
+    List<UsageAllocation> allocations,
+  ) async {
+    if ((record.recordScope != UsageRecordScope.appUsage &&
+            record.recordScope != UsageRecordScope.manualTotal) ||
+        record.networkType == NetworkType.wifi) {
+      throw const AppException(
+        AppException.validation,
+        'Catatan pemakaian ini tidak dapat memiliki alokasi kategori.',
+      );
+    }
+
+    final allocated = allocations.fold<int>(
+      0,
+      (sum, item) => sum + item.allocatedBytes,
+    );
+    if (allocations.any((item) => item.allocatedBytes < 0) ||
+        allocated != record.totalBytes) {
+      throw const AppException(
+        AppException.validation,
+        'Total alokasi harus sama persis dengan RX + TX catatan pemakaian.',
+      );
+    }
+
+    for (final item in allocations) {
+      if (item.packageId != record.packageId ||
+          item.usageRecordId != usageRecordId) {
+        throw const AppException(
+          AppException.validation,
+          'Alokasi tidak sesuai dengan catatan pemakaian.',
+        );
+      }
+
+      final method = item.allocationMethod;
+      final categoryId = item.quotaCategoryId;
+      final ruleId = item.classificationRuleId;
+
+      if (method == AllocationMethod.unclassified) {
+        if (categoryId != null || ruleId != null) {
+          throw const AppException(
+            AppException.validation,
+            'UNCLASSIFIED tidak boleh memiliki kategori atau aturan.',
+          );
+        }
+      } else if (categoryId == null) {
+        throw const AppException(
+          AppException.validation,
+          'Kategori wajib dipilih untuk metode alokasi ini.',
+        );
+      }
+
+      if ((method == AllocationMethod.autoRule) != (ruleId != null)) {
+        throw const AppException(
+          AppException.validation,
+          'Aturan klasifikasi wajib ada hanya untuk AUTO_RULE.',
+        );
+      }
+
+      if ((method == AllocationMethod.autoRule ||
+              method == AllocationMethod.mainFallback) &&
+          (record.recordScope != UsageRecordScope.appUsage ||
+              record.source != UsageSource.android)) {
+        throw const AppException(
+          AppException.validation,
+          'Klasifikasi otomatis hanya berlaku untuk APP_USAGE Android.',
+        );
+      }
+
+      if (categoryId != null) {
+        final categoryRows = await tx.query(
+          'quota_categories',
+          columns: ['category_type', 'is_enabled'],
+          where: 'id = ? AND package_id = ?',
+          whereArgs: [categoryId, record.packageId],
+          limit: 1,
+        );
+        if (categoryRows.isEmpty || categoryRows.first['is_enabled'] != 1) {
+          throw const AppException(
+            AppException.validation,
+            'Kategori tidak tersedia atau bukan milik paket ini.',
+          );
+        }
+        if (method == AllocationMethod.mainFallback &&
+            categoryRows.first['category_type'] != 'MAIN') {
+          throw const AppException(
+            AppException.validation,
+            'MAIN_FALLBACK harus mengarah ke kategori MAIN.',
+          );
+        }
+      }
+
+      if (ruleId != null) {
+        final ruleRows = await tx.query(
+          'classification_rules',
+          columns: ['id'],
+          where: '''
+            id = ?
+            AND quota_category_id = ?
+            AND is_enabled = 1
+          ''',
+          whereArgs: [ruleId, categoryId],
+          limit: 1,
+        );
+        if (ruleRows.isEmpty) {
+          throw const AppException(
+            AppException.validation,
+            'Aturan klasifikasi tidak aktif atau tidak sesuai kategori.',
+          );
+        }
+      }
+    }
+
+    await tx.delete(
+      'usage_allocations',
+      where: 'usage_record_id = ?',
+      whereArgs: [usageRecordId],
+    );
+    for (final item in allocations) {
+      final id = item.id ?? _newSqlId('alloc');
+      await tx.insert('usage_allocations', {...item.toMap(), 'id': id});
+    }
+  }
+
   @override
   Future<void> replaceAllocations(
     String usageRecordId,
     List<UsageAllocation> allocations,
   ) async {
     final db = await h.database;
-
     await db.transaction((tx) async {
-      final recordRows = await tx.query(
+      final rows = await tx.query(
         'usage_records',
         where: 'id = ?',
         whereArgs: [usageRecordId],
+        limit: 1,
       );
-
-      if (recordRows.isEmpty) {
+      if (rows.isEmpty) {
         throw const AppException(
           AppException.notFound,
           'Catatan pemakaian tidak ditemukan.',
         );
       }
-
-      final record = UsageRecord.fromMap(recordRows.first);
-
-      // Alokasi kategori hanya berlaku untuk catatan penggunaan aplikasi.
-      if (record.recordScope != UsageRecordScope.appUsage ||
-          record.networkType == NetworkType.wifi) {
-        throw const AppException(
-          AppException.validation,
-          'Catatan pemakaian ini tidak dapat memiliki alokasi kategori.',
-        );
-      }
-
-      final totalAllocated = allocations.fold<int>(
-        0,
-        (total, allocation) => total + allocation.allocatedBytes,
-      );
-
-      if (allocations.any((allocation) => allocation.allocatedBytes < 0) ||
-          totalAllocated > record.totalBytes) {
-        throw const AppException(
-          AppException.validation,
-          'Jumlah alokasi tidak valid atau melebihi total pemakaian.',
-        );
-      }
-
-      for (final allocation in allocations) {
-        if (allocation.packageId != record.packageId ||
-            allocation.usageRecordId != usageRecordId) {
-          throw const AppException(
-            AppException.validation,
-            'Alokasi tidak sesuai dengan catatan pemakaian.',
-          );
-        }
-
-        if (allocation.quotaCategoryId != null) {
-          final categoryRows = await tx.query(
-            'quota_categories',
-            columns: ['id'],
-            where: 'id = ? AND package_id = ?',
-            whereArgs: [allocation.quotaCategoryId, record.packageId],
-          );
-
-          if (categoryRows.isEmpty) {
-            throw const AppException(
-              AppException.validation,
-              'Kategori alokasi tidak sesuai dengan paket.',
-            );
-          }
-        }
-
-        if (allocation.classificationRuleId != null) {
-          final ruleRows = await tx.query(
-            'classification_rules',
-            columns: ['id', 'quota_category_id'],
-            where: 'id = ?',
-            whereArgs: [allocation.classificationRuleId],
-          );
-
-          if (ruleRows.isEmpty ||
-              ruleRows.first['quota_category_id'] !=
-                  allocation.quotaCategoryId) {
-            throw const AppException(
-              AppException.validation,
-              'Aturan klasifikasi tidak sesuai dengan kategori alokasi.',
-            );
-          }
-        }
-      }
-
-      await tx.delete(
-        'usage_allocations',
-        where: 'usage_record_id = ?',
-        whereArgs: [usageRecordId],
-      );
-
-      for (final allocation in allocations) {
-        final id = allocation.id ?? _newSqlId('alloc');
-
-        await tx.insert('usage_allocations', {...allocation.toMap(), 'id': id});
-      }
+      final record = UsageRecord.fromMap(rows.single);
+      await _replaceAllocationsInTransaction(tx, record, usageRecordId, allocations);
     });
   }
 

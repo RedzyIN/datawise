@@ -202,11 +202,9 @@ void main() {
       final packageId = await packages.add(createPackage());
       final usage = InMemoryUsageRepository(packages);
 
-      final recordId = await usage.upsertRecord(
-        createUsageRecord(
-          packageId: packageId,
-          scope: UsageRecordScope.appUsage,
-        ),
+      final record = createUsageRecord(
+        packageId: packageId,
+        scope: UsageRecordScope.appUsage,
       );
 
       final allocation = UsageAllocation(
@@ -218,9 +216,35 @@ void main() {
       );
 
       expect(
-        () => usage.replaceAllocations(recordId, [allocation]),
+        () => usage.upsertRecordWithAllocations(record, [allocation]),
         throwsA(isA<AppException>()),
       );
+    });
+
+
+    test('alokasi parsial ditolak dan record tidak disimpan', () async {
+      final packages = InMemoryPackageRepository();
+      final packageId = await packages.add(createPackage());
+      final usage = InMemoryUsageRepository(packages);
+      final record = createUsageRecord(
+        packageId: packageId,
+        scope: UsageRecordScope.appUsage,
+      );
+
+      await expectLater(
+        usage.upsertRecordWithAllocations(record, [
+          UsageAllocation(
+            packageId: packageId,
+            usageRecordId: 'temporary',
+            allocatedBytes: 99,
+            allocationMethod: AllocationMethod.unclassified,
+            createdAt: DateTime(2026, 11, 12),
+          ),
+        ]),
+        throwsA(isA<AppException>()),
+      );
+
+      expect(await usage.getRecords(packageId), isEmpty);
     });
 
     test('menghapus paket ikut menghapus catatan dan alokasi', () async {
@@ -228,14 +252,12 @@ void main() {
       final packageId = await packages.add(createPackage());
       final usage = InMemoryUsageRepository(packages);
 
-      final recordId = await usage.upsertRecord(
+      final recordId = await usage.upsertRecordWithAllocations(
         createUsageRecord(
           packageId: packageId,
           scope: UsageRecordScope.appUsage,
         ),
-      );
-
-      await usage.replaceAllocations(recordId, [
+        [
         UsageAllocation(
           packageId: packageId,
           usageRecordId: recordId,

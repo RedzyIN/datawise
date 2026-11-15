@@ -617,13 +617,14 @@ class InMemoryClassificationRuleRepository
 }
 
 class InMemoryUsageRepository implements UsageRepository {
-  InMemoryUsageRepository(this.packages, [this.categories]) {
+  InMemoryUsageRepository(this.packages, [this.categories, this.rules]) {
     packages.addDeleteListener(_handlePackageDelete);
     categories?.addDeleteListener(_handleCategoryDelete);
   }
 
   final InMemoryPackageRepository packages;
   final InMemoryQuotaCategoryRepository? categories;
+  final InMemoryClassificationRuleRepository? rules;
 
   final Map<String, UsageRecord> records = {};
   final Map<String, UsageAllocation> allocations = {};
@@ -650,48 +651,100 @@ class InMemoryUsageRepository implements UsageRepository {
     );
   }
 
-  @override
-  Future<String> upsertRecord(UsageRecord record) async {
+
+  void _validateRecord(UsageRecord record) {
     if (record.rxBytes < 0 ||
         record.txBytes < 0 ||
-        !record.periodEndAt.isAfter(record.periodStartAt)) {
+        !record.periodEndAt.isAfter(record.periodStartAt) ||
+        ((record.source == UsageSource.manual) !=
+            (record.recordScope == UsageRecordScope.manualTotal))) {
       throw const AppException(
         AppException.validation,
         'Data pemakaian tidak valid.',
       );
     }
-
-    if (await packages.getById(record.packageId) == null) {
-      throw const AppException(AppException.notFound, 'Paket tidak ditemukan.');
+    if (record.recordScope == UsageRecordScope.appUsage &&
+        (record.appPackageName == null ||
+            record.appPackageName!.trim().isEmpty)) {
+      throw const AppException(
+        AppException.validation,
+        'Nama paket aplikasi wajib diisi untuk catatan pemakaian aplikasi.',
+      );
     }
+  }
 
-    final matchingSourceKey = record.sourceKey == null
+  Future<String?> _matchingRecordId(UsageRecord record) async {
+    final matching = record.sourceKey == null
         ? null
         : records.values
               .where((item) => item.sourceKey == record.sourceKey)
               .firstOrNull;
+    if (matching != null &&
+        (matching.packageId != record.packageId ||
+            (record.id != null && record.id != matching.id))) {
+      throw const AppException(
+        AppException.validation,
+        'Source key tidak boleh digunakan oleh catatan atau paket lain.',
+      );
+    }
 
-    if (matchingSourceKey != null) {
-      if (matchingSourceKey.packageId != record.packageId) {
+    final existingId = record.id ?? matching?.id;
+    if (existingId != null) {
+      final existing = records[existingId];
+      if (existing != null && existing.packageId != record.packageId) {
         throw const AppException(
           AppException.validation,
-          'Source key sudah digunakan oleh paket lain.',
-        );
-      }
-
-      if (record.id != null && record.id != matchingSourceKey.id) {
-        throw const AppException(
-          AppException.validation,
-          'Source key sudah digunakan oleh catatan lain.',
+          'Catatan pemakaian tidak dapat dipindahkan ke paket lain.',
         );
       }
     }
+    return existingId;
+  }
 
-    final existingId = record.id ?? matchingSourceKey?.id;
+  @override
+  Future<String> upsertRecord(UsageRecord record) async {
+    _validateRecord(record);
+    final chargeable =
+        record.networkType != NetworkType.wifi &&
+        (record.recordScope == UsageRecordScope.appUsage ||
+            record.recordScope == UsageRecordScope.manualTotal);
+    if (chargeable) {
+      throw const AppException(
+        AppException.validation,
+        'Catatan penggunaan ini harus disimpan bersama alokasinya.',
+      );
+    }
+    if (await packages.getById(record.packageId) == null) {
+      throw const AppException(AppException.notFound, 'Paket tidak ditemukan.');
+    }
+    final existingId = await _matchingRecordId(record);
     final id = existingId ?? _memoryId('usage', _nextRecordId++);
-
     records[id] = record.copyWith(id: id);
+    return id;
+  }
 
+  @override
+  Future<String> upsertRecordWithAllocations(
+    UsageRecord record,
+    List<UsageAllocation> rows,
+  ) async {
+    _validateRecord(record);
+    if (record.recordScope == UsageRecordScope.deviceTotal ||
+        record.networkType == NetworkType.wifi) {
+      throw const AppException(
+        AppException.validation,
+        'Catatan agregat perangkat atau Wi-Fi tidak dapat dialokasikan.',
+      );
+    }
+    if (await packages.getById(record.packageId) == null) {
+      throw const AppException(AppException.notFound, 'Paket tidak ditemukan.');
+    }
+
+    final existingId = await _matchingRecordId(record);
+    final id = existingId ?? _memoryId('usage', _nextRecordId++);
+    final saved = record.copyWith(id: id);
+    await _validateAndSaveAllocations(saved, id, rows);
+    records[id] = saved;
     return id;
   }
 
@@ -756,21 +809,14 @@ class InMemoryUsageRepository implements UsageRepository {
     return result;
   }
 
-  @override
-  Future<void> replaceAllocations(
+
+  Future<void> _validateAndSaveAllocations(
+    UsageRecord record,
     String usageRecordId,
     List<UsageAllocation> rows,
   ) async {
-    final record = records[usageRecordId];
-
-    if (record == null) {
-      throw const AppException(
-        AppException.notFound,
-        'Catatan pemakaian tidak ditemukan.',
-      );
-    }
-
-    if (record.recordScope != UsageRecordScope.appUsage ||
+    if ((record.recordScope != UsageRecordScope.appUsage &&
+            record.recordScope != UsageRecordScope.manualTotal) ||
         record.networkType == NetworkType.wifi) {
       throw const AppException(
         AppException.validation,
@@ -780,56 +826,117 @@ class InMemoryUsageRepository implements UsageRepository {
 
     final total = rows.fold<int>(
       0,
-      (sum, allocation) => sum + allocation.allocatedBytes,
+      (sum, item) => sum + item.allocatedBytes,
     );
-
-    if (rows.any((allocation) => allocation.allocatedBytes < 0) ||
-        total > record.totalBytes) {
+    if (rows.any((item) => item.allocatedBytes < 0) ||
+        total != record.totalBytes) {
       throw const AppException(
         AppException.validation,
-        'Total alokasi tidak valid atau melebihi pemakaian.',
+        'Total alokasi harus sama persis dengan RX + TX catatan pemakaian.',
       );
     }
 
-    for (final allocation in rows) {
-      if (allocation.packageId != record.packageId ||
-          allocation.usageRecordId != usageRecordId) {
+    for (final item in rows) {
+      if (item.packageId != record.packageId ||
+          item.usageRecordId != usageRecordId) {
         throw const AppException(
           AppException.validation,
           'Alokasi tidak sesuai dengan catatan pemakaian.',
         );
       }
+      final method = item.allocationMethod;
+      final categoryId = item.quotaCategoryId;
+      final ruleId = item.classificationRuleId;
 
-      if (allocation.quotaCategoryId != null && categories != null) {
-        final category = await categories!.getById(allocation.quotaCategoryId!);
+      if ((method == AllocationMethod.unclassified &&
+              (categoryId != null || ruleId != null)) ||
+          (method != AllocationMethod.unclassified && categoryId == null) ||
+          ((method == AllocationMethod.autoRule) != (ruleId != null))) {
+        throw const AppException(
+          AppException.validation,
+          'Kombinasi metode, kategori, dan aturan alokasi tidak valid.',
+        );
+      }
 
-        if (category == null || category.packageId != record.packageId) {
+      if ((method == AllocationMethod.autoRule ||
+              method == AllocationMethod.mainFallback) &&
+          (record.recordScope != UsageRecordScope.appUsage ||
+              record.source != UsageSource.android)) {
+        throw const AppException(
+          AppException.validation,
+          'Klasifikasi otomatis hanya berlaku untuk APP_USAGE Android.',
+        );
+      }
+
+      QuotaCategory? category;
+      if (categoryId != null) {
+        if (categories == null) {
           throw const AppException(
             AppException.validation,
-            'Kategori alokasi tidak sesuai dengan paket.',
+            'Repository kategori diperlukan untuk memvalidasi alokasi.',
+          );
+        }
+        category = await categories!.getById(categoryId);
+        if (category == null ||
+            category.packageId != record.packageId ||
+            !category.isEnabled) {
+          throw const AppException(
+            AppException.validation,
+            'Kategori tidak tersedia atau bukan milik paket ini.',
+          );
+        }
+      }
+
+      if (method == AllocationMethod.mainFallback &&
+          category?.categoryType != QuotaCategoryType.main) {
+        throw const AppException(
+          AppException.validation,
+          'MAIN_FALLBACK harus mengarah ke kategori MAIN.',
+        );
+      }
+
+      if (ruleId != null) {
+        if (rules == null) {
+          throw const AppException(
+            AppException.validation,
+            'Repository aturan diperlukan untuk memvalidasi AUTO_RULE.',
+          );
+        }
+        final ruleRows = await rules!.getByPackage(record.packageId);
+        final rule = ruleRows.where((candidate) => candidate.id == ruleId).firstOrNull;
+        if (rule == null ||
+            !rule.isEnabled ||
+            rule.quotaCategoryId != categoryId) {
+          throw const AppException(
+            AppException.validation,
+            'Aturan klasifikasi tidak aktif atau tidak sesuai kategori.',
           );
         }
       }
     }
 
     allocations.removeWhere(
-      (_, allocation) => allocation.usageRecordId == usageRecordId,
+      (_, item) => item.usageRecordId == usageRecordId,
     );
+    for (final item in rows) {
+      final id = item.id ?? _memoryId('allocation', _nextAllocationId++);
+      allocations[id] = item.copyWith(id: id);
+    }
+  }
 
-    for (final allocation in rows) {
-      final id = allocation.id ?? _memoryId('allocation', _nextAllocationId++);
-
-      allocations[id] = UsageAllocation(
-        id: id,
-        packageId: allocation.packageId,
-        usageRecordId: allocation.usageRecordId,
-        quotaCategoryId: allocation.quotaCategoryId,
-        classificationRuleId: allocation.classificationRuleId,
-        allocatedBytes: allocation.allocatedBytes,
-        allocationMethod: allocation.allocationMethod,
-        createdAt: allocation.createdAt,
+  @override
+  Future<void> replaceAllocations(
+    String usageRecordId,
+    List<UsageAllocation> rows,
+  ) async {
+    final record = records[usageRecordId];
+    if (record == null) {
+      throw const AppException(
+        AppException.notFound,
+        'Catatan pemakaian tidak ditemukan.',
       );
     }
+    await _validateAndSaveAllocations(record, usageRecordId, rows);
   }
 
   @override
