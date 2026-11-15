@@ -20,6 +20,7 @@ List<SingleChildWidget> buildAppProviders() {
   final DataLimitRepository dataLimitRepo = SqliteDataLimitRepository();
   final AlertRepository alertRepo = SqliteAlertRepository();
   final SettingsRepository settingsRepo = SqliteSettingsRepository();
+  final UserRepository userRepo = SqliteUserRepository();
 
   // --- Service ---
   final AuthService authService = FirebaseAuthService();
@@ -34,12 +35,15 @@ List<SingleChildWidget> buildAppProviders() {
     Provider<DataLimitRepository>.value(value: dataLimitRepo),
     Provider<AlertRepository>.value(value: alertRepo),
     Provider<SettingsRepository>.value(value: settingsRepo),
+    Provider<UserRepository>.value(value: userRepo),
     Provider<AuthService>.value(value: authService),
     Provider<UsageService>.value(value: usageService),
     Provider<AlertService>.value(value: alertService),
 
     // --- Provider (ChangeNotifier) ---
-    ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider(authService)),
+    ChangeNotifierProvider<AuthProvider>(
+      create: (_) => AuthProvider(authService, userRepo),
+    ),
     ChangeNotifierProvider<PackageProvider>(create: (_) => PackageProvider(packageRepo)),
     ChangeNotifierProvider<UsageProvider>(
         create: (_) => UsageProvider(usageService, usageRepo, packageRepo)),

@@ -6,8 +6,38 @@ import '../package_repository.dart';
 import '../quota_category_repository.dart';
 import '../settings_repository.dart';
 import '../usage_repository.dart';
+import '../user_repository.dart';
 
 String _memoryId(String prefix, int number) => '${prefix}_$number';
+
+
+class InMemoryUserRepository implements UserRepository {
+  final Map<String, AppUser> items = {};
+
+  @override
+  Future<void> upsert(AppUser user) async {
+    final uid = user.uid.trim();
+    if (uid.isEmpty) {
+      throw const AppException(
+        AppException.validation,
+        'UID pengguna wajib tersedia.',
+      );
+    }
+
+    items[uid] = AppUser(
+      uid: uid,
+      displayName: user.displayName?.trim().isEmpty == true
+          ? null
+          : user.displayName?.trim(),
+      email: user.email?.trim().isEmpty == true
+          ? null
+          : user.email?.trim(),
+    );
+  }
+
+  @override
+  Future<AppUser?> getById(String uid) async => items[uid];
+}
 
 class InMemoryPackageRepository implements PackageRepository {
   final Map<String, DataPackage> _items = {};

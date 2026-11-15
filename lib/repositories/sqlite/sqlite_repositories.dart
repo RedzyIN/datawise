@@ -9,6 +9,7 @@ import '../package_repository.dart';
 import '../quota_category_repository.dart';
 import '../settings_repository.dart';
 import '../usage_repository.dart';
+import '../user_repository.dart';
 
 import 'dart:math';
 
@@ -20,6 +21,81 @@ String _newSqlId(String prefix) {
   ).join();
 
   return '${prefix}_${DateTime.now().microsecondsSinceEpoch}_$suffix';
+}
+
+
+class SqliteUserRepository implements UserRepository {
+  SqliteUserRepository([DbHelper? helper]) : h = helper ?? DbHelper.instance;
+
+  final DbHelper h;
+
+  @override
+  Future<void> upsert(AppUser user) async {
+    final uid = user.uid.trim();
+    if (uid.isEmpty) {
+      throw const AppException(
+        AppException.validation,
+        'UID pengguna wajib tersedia.',
+      );
+    }
+
+    final now = DateTime.now().toUtc().toIso8601String();
+    final values = <String, Object?>{
+      'display_name': user.displayName?.trim().isEmpty == true
+          ? null
+          : user.displayName?.trim(),
+      'email': user.email?.trim().isEmpty == true
+          ? null
+          : user.email?.trim(),
+      'updated_at': now,
+    };
+
+    final db = await h.database;
+    await db.transaction((tx) async {
+      final existing = await tx.query(
+        'users',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [uid],
+        limit: 1,
+      );
+
+      if (existing.isEmpty) {
+        await tx.insert('users', {
+          'id': uid,
+          ...values,
+          'created_at': now,
+        });
+      } else {
+        await tx.update(
+          'users',
+          values,
+          where: 'id = ?',
+          whereArgs: [uid],
+        );
+      }
+    });
+  }
+
+  @override
+  Future<AppUser?> getById(String uid) async {
+    if (uid.trim().isEmpty) return null;
+
+    final rows = await (await h.database).query(
+      'users',
+      where: 'id = ?',
+      whereArgs: [uid],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) return null;
+
+    return AppUser(
+      uid: rows.first['id'] as String,
+      displayName: rows.first['display_name'] as String?,
+      email: rows.first['email'] as String?,
+    );
+  }
 }
 
 class SqlitePackageRepository implements PackageRepository {
