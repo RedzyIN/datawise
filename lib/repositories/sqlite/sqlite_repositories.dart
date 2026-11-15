@@ -998,7 +998,7 @@ class SqliteUsageRepository implements UsageRepository {
   @override
   Future<String> upsertRecordWithAllocations(
     UsageRecord record,
-    List<UsageAllocation> allocations,
+    List<UsageAllocation> Function(String usageRecordId) allocationBuilder,
   ) async {
     _validateRecord(record);
     if (record.recordScope == UsageRecordScope.deviceTotal ||
@@ -1041,6 +1041,7 @@ class SqliteUsageRepository implements UsageRepository {
         limit: 1,
       );
       final saved = UsageRecord.fromMap(rows.single);
+      final allocations = allocationBuilder(id);
       await _replaceAllocationsInTransaction(txn, saved, id, allocations);
       return id;
     });

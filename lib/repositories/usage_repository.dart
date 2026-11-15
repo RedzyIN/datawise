@@ -9,7 +9,7 @@ abstract class UsageRepository {
   /// in one transaction.
   Future<String> upsertRecordWithAllocations(
     UsageRecord record,
-    List<UsageAllocation> allocations,
+    List<UsageAllocation> Function(String usageRecordId) allocationBuilder,
   );
 
   Future<void> deleteManualRecords(

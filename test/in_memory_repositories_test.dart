@@ -122,7 +122,7 @@ void main() {
         ),
       );
 
-      await usage.upsertRecord(
+      await usage.upsertRecordWithAllocations(
         createUsageRecord(
           packageId: packageId,
           source: UsageSource.manual,
@@ -131,6 +131,15 @@ void main() {
           rxBytes: 200,
           txBytes: 100,
         ),
+        (recordId) => [
+          UsageAllocation(
+            packageId: packageId,
+            usageRecordId: recordId,
+            allocatedBytes: 300,
+            allocationMethod: AllocationMethod.unclassified,
+            createdAt: DateTime(2026, 11, 12),
+          ),
+        ],
       );
 
       final records = await usage.getRecords(packageId);
@@ -208,16 +217,19 @@ void main() {
         scope: UsageRecordScope.appUsage,
       );
 
-      final allocation = UsageAllocation(
-        packageId: packageId,
-        usageRecordId: recordId,
-        allocatedBytes: 101,
-        allocationMethod: AllocationMethod.unclassified,
-        createdAt: DateTime(2026, 11, 12),
-      );
-
       expect(
-        () => usage.upsertRecordWithAllocations(record, [allocation]),
+        () => usage.upsertRecordWithAllocations(
+          record,
+          (recordId) => [
+            UsageAllocation(
+              packageId: packageId,
+              usageRecordId: recordId,
+              allocatedBytes: 101,
+              allocationMethod: AllocationMethod.unclassified,
+              createdAt: DateTime(2026, 11, 12),
+            ),
+          ],
+        ),
         throwsA(isA<AppException>()),
       );
     });
@@ -233,15 +245,18 @@ void main() {
       );
 
       await expectLater(
-        usage.upsertRecordWithAllocations(record, [
-          UsageAllocation(
-            packageId: packageId,
-            usageRecordId: 'temporary',
-            allocatedBytes: 99,
-            allocationMethod: AllocationMethod.unclassified,
-            createdAt: DateTime(2026, 11, 12),
-          ),
-        ]),
+        usage.upsertRecordWithAllocations(
+          record,
+          (recordId) => [
+            UsageAllocation(
+              packageId: packageId,
+              usageRecordId: recordId,
+              allocatedBytes: 99,
+              allocationMethod: AllocationMethod.unclassified,
+              createdAt: DateTime(2026, 11, 12),
+            ),
+          ],
+        ),
         throwsA(isA<AppException>()),
       );
 
@@ -258,15 +273,16 @@ void main() {
           packageId: packageId,
           scope: UsageRecordScope.appUsage,
         ),
-        [
-        UsageAllocation(
-          packageId: packageId,
-          usageRecordId: recordId,
-          allocatedBytes: 50,
-          allocationMethod: AllocationMethod.unclassified,
-          createdAt: DateTime(2026, 11, 12),
-        ),
-      ]);
+        (recordId) => [
+          UsageAllocation(
+            packageId: packageId,
+            usageRecordId: recordId,
+            allocatedBytes: 100,
+            allocationMethod: AllocationMethod.unclassified,
+            createdAt: DateTime(2026, 11, 12),
+          ),
+        ],
+      );
 
       await packages.delete(packageId);
 

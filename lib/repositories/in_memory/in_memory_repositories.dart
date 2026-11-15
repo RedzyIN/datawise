@@ -730,7 +730,7 @@ class InMemoryUsageRepository implements UsageRepository {
   @override
   Future<String> upsertRecordWithAllocations(
     UsageRecord record,
-    List<UsageAllocation> rows,
+    List<UsageAllocation> Function(String usageRecordId) allocationBuilder,
   ) async {
     _validateRecord(record);
     if (record.recordScope == UsageRecordScope.deviceTotal ||
@@ -747,6 +747,7 @@ class InMemoryUsageRepository implements UsageRepository {
     final existingId = await _matchingRecordId(record);
     final id = existingId ?? _memoryId('usage', _nextRecordId++);
     final saved = record.copyWith(id: id);
+    final rows = allocationBuilder(id);
     await _validateAndSaveAllocations(saved, id, rows);
     records[id] = saved;
     return id;

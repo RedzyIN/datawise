@@ -262,7 +262,7 @@ void main() {
         ),
       );
 
-      await usage.upsertRecord(
+      await usage.upsertRecordWithAllocations(
         sampleUsage(
           packageId: packageId,
           source: UsageSource.manual,
@@ -271,6 +271,15 @@ void main() {
           rxBytes: 200,
           txBytes: 100,
         ),
+        (recordId) => [
+          UsageAllocation(
+            packageId: packageId,
+            usageRecordId: recordId,
+            allocatedBytes: 300,
+            allocationMethod: AllocationMethod.unclassified,
+            createdAt: DateTime(2026, 11, 12),
+          ),
+        ],
       );
 
       final records = await usage.getRecords(packageId);
@@ -363,13 +372,22 @@ void main() {
   test('manual records can be deleted by period', () async {
     final packageId = await packages.add(samplePackage());
 
-    await usage.upsertRecord(
+    await usage.upsertRecordWithAllocations(
       sampleUsage(
         packageId: packageId,
         source: UsageSource.manual,
         sourceKey: null,
         scope: UsageRecordScope.manualTotal,
       ),
+      (recordId) => [
+        UsageAllocation(
+          packageId: packageId,
+          usageRecordId: recordId,
+          allocatedBytes: 1000,
+          allocationMethod: AllocationMethod.unclassified,
+          createdAt: DateTime(2026, 11, 12),
+        ),
+      ],
     );
 
     await usage.deleteManualRecords(
@@ -401,21 +419,24 @@ void main() {
       scope: UsageRecordScope.appUsage,
       appPackageName: 'com.example.app',
     );
-    final recordId = await usage.upsertRecordWithAllocations(record, [
-      UsageAllocation(
-        packageId: packageId,
-        usageRecordId: recordId,
-        quotaCategoryId: categoryId,
-        allocatedBytes: 1000,
-        allocationMethod: AllocationMethod.manualUser,
-        createdAt: now,
-      ),
-    ]);
+    final recordId = await usage.upsertRecordWithAllocations(
+      record,
+      (recordId) => [
+        UsageAllocation(
+          packageId: packageId,
+          usageRecordId: recordId,
+          quotaCategoryId: categoryId,
+          allocatedBytes: 1000,
+          allocationMethod: AllocationMethod.manualUser,
+          createdAt: now,
+        ),
+      ],
+    );
 
     final allocations = await usage.getAllocations(recordId);
 
     expect(allocations, hasLength(1));
-    expect(allocations.single.allocatedBytes, 500);
+    expect(allocations.single.allocatedBytes, 1000);
     expect(allocations.single.quotaCategoryId, categoryId);
   });
 
@@ -430,15 +451,18 @@ void main() {
     final now = DateTime(2026, 11, 12);
 
     expect(
-      () => usage.upsertRecordWithAllocations(record, [
-        UsageAllocation(
-          packageId: packageId,
-          usageRecordId: recordId,
-          allocatedBytes: 1001,
-          allocationMethod: AllocationMethod.unclassified,
-          createdAt: now,
-        ),
-      ]),
+      () => usage.upsertRecordWithAllocations(
+        record,
+        (recordId) => [
+          UsageAllocation(
+            packageId: packageId,
+            usageRecordId: recordId,
+            allocatedBytes: 1001,
+            allocationMethod: AllocationMethod.unclassified,
+            createdAt: now,
+          ),
+        ],
+      ),
       throwsA(isA<AppException>()),
     );
   });
@@ -453,15 +477,18 @@ void main() {
     );
 
     await expectLater(
-      usage.upsertRecordWithAllocations(record, [
-        UsageAllocation(
-          packageId: packageId,
-          usageRecordId: 'temporary',
-          allocatedBytes: 999,
-          allocationMethod: AllocationMethod.unclassified,
-          createdAt: DateTime(2026, 11, 12),
-        ),
-      ]),
+      usage.upsertRecordWithAllocations(
+        record,
+        (recordId) => [
+          UsageAllocation(
+            packageId: packageId,
+            usageRecordId: recordId,
+            allocatedBytes: 999,
+            allocationMethod: AllocationMethod.unclassified,
+            createdAt: DateTime(2026, 11, 12),
+          ),
+        ],
+      ),
       throwsA(isA<AppException>()),
     );
     expect(await usage.getRecords(packageId), isEmpty);
