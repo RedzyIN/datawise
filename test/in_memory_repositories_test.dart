@@ -37,6 +37,7 @@ UsageRecord createUsageRecord({
   return UsageRecord(
     packageId: packageId,
     recordScope: scope,
+    appPackageName: scope == UsageRecordScope.appUsage ? 'com.example.app' : null,
     networkType: NetworkType.mobile,
     periodStartAt: start,
     periodEndAt: end,

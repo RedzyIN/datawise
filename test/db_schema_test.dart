@@ -509,6 +509,15 @@ void main() {
             'updated_at': 200000,
           });
 
+          await db.insert('usage_records', {
+            'id': 10,
+            'package_id': 7,
+            'record_date': '2026-11-11',
+            'used_bytes': 250,
+            'source': 'manual',
+            'updated_at': 150000,
+          });
+
           await db.insert('classification_rules', {
             'id': 4,
             'package_id': 7,
@@ -576,10 +585,29 @@ void main() {
       expect(category['id'], 'legacy_category_11');
       expect(category['category_type'], 'MAIN');
 
-      final usage = (await db.query('usage_records')).single;
-      expect(usage['id'], 'legacy_usage_9');
+      final usageRows = await db.query(
+        'usage_records',
+        where: 'id = ?',
+        whereArgs: ['legacy_usage_9'],
+      );
+      final usage = usageRows.single;
       expect(usage['record_scope'], 'DEVICE_TOTAL');
       expect(usage['rx_bytes'], 123);
+
+      final manualUsageRows = await db.query(
+        'usage_records',
+        where: 'id = ?',
+        whereArgs: ['legacy_usage_10'],
+      );
+      expect(manualUsageRows.single['record_scope'], 'MANUAL_TOTAL');
+      final migratedManualAllocations = await db.query(
+        'usage_allocations',
+        where: 'usage_record_id = ?',
+        whereArgs: ['legacy_usage_10'],
+      );
+      expect(migratedManualAllocations, hasLength(1));
+      expect(migratedManualAllocations.single['allocated_bytes'], 250);
+      expect(migratedManualAllocations.single['allocation_method'], 'UNCLASSIFIED');
 
       final rule = (await db.query('classification_rules')).single;
       expect(rule['id'], 'legacy_rule_4');
@@ -601,7 +629,11 @@ void main() {
       expect(archivedAllocation, hasLength(1));
       expect(archivedAllocation.single['used_bytes'], 50);
 
-      expect(await db.query('usage_allocations'), isEmpty);
+      expect(await db.query('usage_allocations'), hasLength(1));
+      expect(
+        (await db.query('usage_allocations')).single['id'],
+        'legacy_manual_allocation_10',
+      );
 
       // Kolom yang tidak memiliki padanan di v3 tetap tersedia di arsip.
       final archivedPackage = (await db.query('legacy_v2_data_packages'))

@@ -828,7 +828,7 @@ class SqliteClassificationRuleRepository
         (rule.startMinute != null &&
             (rule.startMinute! < 0 || rule.startMinute! > 1439)) ||
         (rule.endMinute != null &&
-            (rule.endMinute! < 0 || rule.endMinute! > 1439)) ||
+            (rule.endMinute! < 0 || rule.endMinute! > 1440)) ||
         ((rule.startMinute == null) != (rule.endMinute == null)) ||
         rule.daysOfWeekMask < 1 ||
         rule.daysOfWeekMask > 127 ||
@@ -928,7 +928,10 @@ class SqliteClassificationRuleRepository
       INNER JOIN quota_categories c
         ON c.id = r.quota_category_id
       WHERE c.package_id = ?
-      ORDER BY r.priority ASC, r.created_at ASC
+      ORDER BY
+        r.priority DESC,
+        CASE WHEN r.app_package_name IS NULL THEN 1 ELSE 0 END ASC,
+        r.id ASC
       ''',
       [packageId],
     );

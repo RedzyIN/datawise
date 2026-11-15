@@ -521,7 +521,7 @@ class InMemoryClassificationRuleRepository
         (rule.startMinute != null &&
             (rule.startMinute! < 0 || rule.startMinute! > 1439)) ||
         (rule.endMinute != null &&
-            (rule.endMinute! < 0 || rule.endMinute! > 1439)) ||
+            (rule.endMinute! < 0 || rule.endMinute! > 1440)) ||
         rule.daysOfWeekMask < 1 ||
         rule.daysOfWeekMask > 127 ||
         rule.priority < 0) {
@@ -606,10 +606,14 @@ class InMemoryClassificationRuleRepository
     }).toList();
 
     result.sort((a, b) {
-      final priorityComparison = a.priority.compareTo(b.priority);
-      return priorityComparison != 0
-          ? priorityComparison
-          : (a.id ?? '').compareTo(b.id ?? '');
+      final priorityComparison = b.priority.compareTo(a.priority);
+      if (priorityComparison != 0) return priorityComparison;
+
+      final specificityComparison = (a.appPackageName == null ? 1 : 0)
+          .compareTo(b.appPackageName == null ? 1 : 0);
+      if (specificityComparison != 0) return specificityComparison;
+
+      return (a.id ?? '').compareTo(b.id ?? '');
     });
 
     return result;
@@ -920,7 +924,16 @@ class InMemoryUsageRepository implements UsageRepository {
     );
     for (final item in rows) {
       final id = item.id ?? _memoryId('allocation', _nextAllocationId++);
-      allocations[id] = item.copyWith(id: id);
+      allocations[id] = UsageAllocation(
+        id: id,
+        packageId: item.packageId,
+        usageRecordId: item.usageRecordId,
+        quotaCategoryId: item.quotaCategoryId,
+        classificationRuleId: item.classificationRuleId,
+        allocatedBytes: item.allocatedBytes,
+        allocationMethod: item.allocationMethod,
+        createdAt: item.createdAt,
+      );
     }
   }
 

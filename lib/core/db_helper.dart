@@ -365,6 +365,36 @@ class DbHelper {
       FROM legacy_v2_usage_records
     ''');
 
+    // Manual usage records in v2 had no category field. Preserve their
+    // bytes as an explicit UNCLASSIFIED allocation in the v3 operational model.
+    await db.execute('''
+      INSERT INTO usage_allocations (
+        id,
+        package_id,
+        usage_record_id,
+        quota_category_id,
+        classification_rule_id,
+        allocated_bytes,
+        allocation_method,
+        created_at
+      )
+      SELECT
+        'legacy_manual_allocation_' || id,
+        'legacy_package_' || package_id,
+        'legacy_usage_' || id,
+        NULL,
+        NULL,
+        used_bytes,
+        'UNCLASSIFIED',
+        strftime(
+          '%Y-%m-%dT%H:%M:%fZ',
+          updated_at / 1000.0,
+          'unixepoch'
+        )
+      FROM legacy_v2_usage_records
+      WHERE LOWER(source) = 'manual'
+    ''');
+
     // 5. Migrasikan aturan klasifikasi.
     await db.execute('''
       INSERT INTO classification_rules (
