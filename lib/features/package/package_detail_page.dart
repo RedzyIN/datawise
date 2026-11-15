@@ -87,6 +87,51 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
     );
   }
 
+  Future<void> _archivePackage(DataPackage package) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Arsipkan Paket?'),
+          content: Text(
+            'Paket "' + package.packageName + '" akan dipindahkan ke arsip. '
+            'Kategori, catatan penggunaan, aturan, dan riwayat notifikasi tetap disimpan.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Arsipkan'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final userId = context.read<AuthProvider>().currentUser?.uid;
+    if (userId == null || package.id == null) return;
+
+    final provider = context.read<PackageProvider>();
+    provider.clearError();
+    final success = await provider.archivePackage(package.id!, userId);
+
+    if (!mounted) return;
+    if (success) {
+      Navigator.pop(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(provider.errorMessage ?? 'Gagal mengarsipkan paket.'),
+        ),
+      );
+    }
+  }
+
   Future<void> _deletePackage(DataPackage package) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -94,7 +139,8 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
         return AlertDialog(
           title: const Text('Hapus Paket?'),
           content: Text(
-            'Paket "${package.packageName}" akan dihapus. '
+            'Paket "${package.packageName}" beserta kategori, catatan penggunaan, '
+            'aturan klasifikasi, dan riwayat notifikasinya akan dihapus permanen. '
             'Tindakan ini tidak dapat dibatalkan.',
           ),
           actions: [
@@ -104,7 +150,7 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Hapus'),
+              child: const Text('Hapus Permanen'),
             ),
           ],
         );
@@ -313,6 +359,17 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
               ),
 
               const SizedBox(height: 10),
+
+              if (currentPackage.status != PackageStatus.archived) ...[
+                OutlinedButton.icon(
+                  onPressed: provider.isLoading
+                      ? null
+                      : () => _archivePackage(currentPackage),
+                  icon: const Icon(Icons.archive_outlined),
+                  label: const Text('Arsipkan Paket'),
+                ),
+                const SizedBox(height: 10),
+              ],
 
               TextButton.icon(
                 onPressed: provider.isLoading

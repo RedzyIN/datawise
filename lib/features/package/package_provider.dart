@@ -81,6 +81,37 @@ class PackageProvider extends ChangeNotifier {
     });
   }
 
+  // Mengarsipkan paket tanpa menghapus kategori atau riwayat penggunaan.
+  Future<bool> archivePackage(String packageId, String userId) async {
+    return _run(() async {
+      if (packageId.trim().isEmpty || userId.trim().isEmpty) {
+        throw const AppException(
+          AppException.validation,
+          'Data paket tidak valid.',
+        );
+      }
+
+      final package = await _repository.getById(packageId);
+      if (package == null || package.userId != userId) {
+        throw const AppException(
+          AppException.notFound,
+          'Paket tidak ditemukan.',
+        );
+      }
+
+      if (package.status == PackageStatus.archived) return;
+
+      await _repository.update(
+        package.copyWith(
+          status: PackageStatus.archived,
+          updatedAt: DateTime.now(),
+        ),
+      );
+
+      _packages = await _repository.getAll(userId);
+    });
+  }
+
   // Menghapus paket.
   Future<bool> deletePackage(String packageId, String userId) async {
     return _run(() async {

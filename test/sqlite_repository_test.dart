@@ -107,6 +107,25 @@ void main() {
     expect(rows.single.capacityBytes, 20000000000);
   });
 
+  test('archiving a package preserves its usage history', () async {
+    final packageId = await packages.add(samplePackage());
+    await usage.upsertRecord(sampleUsage(packageId: packageId));
+
+    final current = await packages.getById(packageId);
+    await packages.update(
+      current!.copyWith(
+        status: PackageStatus.archived,
+        updatedAt: DateTime(2026, 11, 15),
+      ),
+    );
+
+    expect(
+      (await packages.getById(packageId))!.status,
+      PackageStatus.archived,
+    );
+    expect(await usage.getRecords(packageId), hasLength(1));
+  });
+
   test('only one active package is allowed per user', () async {
     final firstId = await packages.add(samplePackage());
 
@@ -269,6 +288,7 @@ void main() {
       quotaCategoryId: main.id!,
       ruleName: 'Aplikasi tertentu',
       appPackageName: 'com.example.app',
+      startMinute: 0,
       endMinute: 1440,
       priority: 100,
       isEnabled: true,

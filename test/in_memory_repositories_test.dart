@@ -62,6 +62,31 @@ void main() {
       expect((await repo.getActive('u1'))!.id, second);
     });
 
+    test('mengarsipkan paket mempertahankan riwayat penggunaan', () async {
+      final packages = InMemoryPackageRepository();
+      final categories = InMemoryQuotaCategoryRepository(packages);
+      final packageId = await packages.add(createPackage());
+      final usage = InMemoryUsageRepository(packages, categories);
+
+      await usage.upsertRecord(
+        createUsageRecord(packageId: packageId),
+      );
+
+      final current = await packages.getById(packageId);
+      await packages.update(
+        current!.copyWith(
+          status: PackageStatus.archived,
+          updatedAt: DateTime(2026, 11, 15),
+        ),
+      );
+
+      expect(
+        (await packages.getById(packageId))!.status,
+        PackageStatus.archived,
+      );
+      expect(await usage.getRecords(packageId), hasLength(1));
+    });
+
     test('pengguna lain tidak terpengaruh saat paket diaktifkan', () async {
       final repo = InMemoryPackageRepository();
 
@@ -130,6 +155,7 @@ void main() {
         quotaCategoryId: main.id!,
         ruleName: 'Aplikasi tertentu',
         appPackageName: 'com.example.app',
+        startMinute: 0,
         endMinute: 1440,
         priority: 100,
         isEnabled: true,
