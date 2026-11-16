@@ -5,14 +5,15 @@ import '../../repositories/repositories.dart';
 import '../../services/usage_service.dart';
 
 class UsageProvider extends ChangeNotifier {
-  UsageProvider(this._service, this._usageRepo, this._packageRepo);
+  UsageProvider(this._service, this._usageRepo, this._categoryRepo);
 
   final UsageService _service;
   final UsageRepository _usageRepo;
-  final PackageRepository _packageRepo;
+  final QuotaCategoryRepository _categoryRepo;
 
   bool _hasPermission = false;
   bool _isLoading = false;
+
   UsageReading? _lastReading;
   DateTime? _lastRefresh;
   String? _errorMessage;
@@ -34,10 +35,12 @@ class UsageProvider extends ChangeNotifier {
   Future<void> checkPermission() async {
     try {
       _hasPermission = await _service.hasPermission();
+
       _errorMessage = _hasPermission
           ? null
           : 'Izin Usage Access belum diberikan.';
     } catch (e) {
+      _hasPermission = false;
       _handleError(e);
     }
 
@@ -45,14 +48,9 @@ class UsageProvider extends ChangeNotifier {
   }
 
   Future<void> refresh(DataPackage package) async {
-    if (package.id == null) {
-      _errorMessage = 'Paket belum memiliki ID.';
-      notifyListeners();
-      return;
-    }
-
     _isLoading = true;
     _errorMessage = null;
+
     notifyListeners();
 
     try {
@@ -76,7 +74,9 @@ class UsageProvider extends ChangeNotifier {
 
   Future<void> saveManualToday(DataPackage package, int bytes) async {
     try {
-      if (package.id == null) {
+      final packageId = package.id;
+
+      if (packageId == null) {
         throw const AppException(
           AppException.validation,
           'Paket belum memiliki ID.',
@@ -90,12 +90,57 @@ class UsageProvider extends ChangeNotifier {
         );
       }
 
-      await _usageRepo.upsertRecord(
-        package.id!,
-        dateOnly(DateTime.now()),
-        bytes,
-        UsageSource.manual,
+      final categories = await _categoryRepo.getByPackage(packageId);
+
+      QuotaCategory? mainCategory;
+
+      for (final category in categories) {
+        if (category.categoryType == QuotaCategoryType.main) {
+          mainCategory = category;
+          break;
+        }
+      }
+
+      if (mainCategory == null || mainCategory.id == null) {
+        throw const AppException(
+          AppException.notFound,
+          'Kategori kuota utama tidak ditemukan.',
+        );
+      }
+
+      final now = DateTime.now();
+      final start = dateOnly(now);
+
+      // periodEndAt harus lebih besar daripada periodStartAt.
+      final end = now.isAfter(start)
+          ? now
+          : start.add(const Duration(seconds: 1));
+
+      final record = UsageRecord(
+        packageId: packageId,
+        recordScope: UsageRecordScope.manualTotal,
+        networkType: NetworkType.mobile,
+        periodStartAt: start,
+        periodEndAt: end,
+        rxBytes: bytes,
+        txBytes: 0,
+        source: UsageSource.manual,
+        sourceKey: 'manual_${packageId}_${dateToDb(start)}',
+        recordedAt: now,
       );
+
+      await _usageRepo.upsertRecordWithAllocations(record, (usageRecordId) {
+        return [
+          UsageAllocation(
+            packageId: packageId,
+            usageRecordId: usageRecordId,
+            quotaCategoryId: mainCategory!.id,
+            allocatedBytes: bytes,
+            allocationMethod: AllocationMethod.manualUser,
+            createdAt: now,
+          ),
+        ];
+      });
 
       _errorMessage = null;
     } catch (e) {
@@ -107,54 +152,21 @@ class UsageProvider extends ChangeNotifier {
 
   Future<void> deleteManualToday(DataPackage package) async {
     try {
-      if (package.id == null) {
+      final packageId = package.id;
+
+      if (packageId == null) {
         throw const AppException(
           AppException.validation,
           'Paket belum memiliki ID.',
         );
       }
 
-      await _usageRepo.deleteManual(package.id!, dateOnly(DateTime.now()));
+      final now = DateTime.now();
+      final start = dateOnly(now);
+      final end = start.add(const Duration(days: 1));
 
-      _errorMessage = null;
-    } catch (e) {
-      _handleError(e);
-    }
+      await _usageRepo.deleteManualRecords(packageId, start, end);
 
-    notifyListeners();
-  }
-
-  Future<void> setInitialUsed(DataPackage package, int bytes) async {
-    try {
-      if (package.id == null) {
-        throw const AppException(
-          AppException.validation,
-          'Paket belum memiliki ID.',
-        );
-      }
-
-      if (bytes < 0) {
-        throw const AppException(
-          AppException.validation,
-          'Penggunaan awal tidak boleh negatif.',
-        );
-      }
-
-      final existingPackage = await _packageRepo.getById(package.id!);
-
-      if (existingPackage == null) {
-        throw const AppException(
-          AppException.notFound,
-          'Paket tidak ditemukan.',
-        );
-      }
-
-      final updatedPackage = existingPackage.copyWith(
-        initialUsedBytes: bytes,
-        updatedAt: DateTime.now(),
-      );
-
-      await _packageRepo.update(updatedPackage);
       _errorMessage = null;
     } catch (e) {
       _handleError(e);
