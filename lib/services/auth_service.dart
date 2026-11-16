@@ -1,5 +1,5 @@
-
 import 'package:firebase_auth/firebase_auth.dart';
+
 import '../models/models.dart';
 
 AppException mapFirebaseAuthException(FirebaseAuthException e) {
@@ -59,7 +59,11 @@ AppException mapFirebaseAuthException(FirebaseAuthException e) {
 abstract class AuthService {
   Stream<AppUser?> authStateChanges();
   AppUser? get currentUser;
-  Future<AppUser> register(String email, String password);
+  Future<AppUser> register(
+    String email,
+    String password, {
+    String? displayName,
+  });
   Future<AppUser> login(String email, String password);
   Future<void> logout();
 }
@@ -67,7 +71,7 @@ abstract class AuthService {
 class FirebaseAuthService implements AuthService {
   // Menggunakan FirebaseAuth bawaan jika tidak ada yang diberikan.
   FirebaseAuthService([FirebaseAuth? auth])
-      : _auth = auth ?? FirebaseAuth.instance;
+    : _auth = auth ?? FirebaseAuth.instance;
 
   final FirebaseAuth _auth;
 
@@ -77,7 +81,8 @@ class FirebaseAuthService implements AuthService {
 
     return AppUser(
       uid: user.uid,
-      email: user.email ?? '',
+      displayName: user.displayName,
+      email: user.email,
     );
   }
 
@@ -92,15 +97,33 @@ class FirebaseAuthService implements AuthService {
   }
 
   @override
-  Future<AppUser> register(String email, String password) async {
+  Future<AppUser> register(
+    String email,
+    String password, {
+    String? displayName,
+  }) async {
     try {
       final result = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      final user = _toAppUser(result.user);
+      final created = result.user;
+      if (created == null) {
+        throw const AppException(
+          AppException.authError,
+          'Registrasi gagal. Data pengguna tidak ditemukan.',
+        );
+      }
 
+      // Simpan nama ke profil Firebase Authentication.
+      final name = displayName?.trim();
+      if (name != null && name.isNotEmpty) {
+        await created.updateDisplayName(name);
+        await created.reload();
+      }
+
+      final user = _toAppUser(_auth.currentUser ?? created);
       if (user == null) {
         throw const AppException(
           AppException.authError,

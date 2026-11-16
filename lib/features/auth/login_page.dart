@@ -65,76 +65,106 @@ class _LoginPageState extends State<LoginPage> {
     final auth = context.watch<AuthProvider>();
 
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Form(
-              key: _formKey,
-              child: AutofillGroup(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'Selamat Datang!',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
+      backgroundColor: AuthColors.backgroundBottom,
+      body: AuthBackground(
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Center(child: AuthLogo()),
+                  const SizedBox(height: 14),
+                  const Center(child: AuthBadge('DATAWISE')),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Masuk ke Akun Anda',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: AuthColors.textDark,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Pantau dan kelola penggunaan kuota internet\nharian secara cerdas',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 15,
+                      height: 1.4,
+                      color: AuthColors.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  AuthCard(
+                    child: Form(
+                      key: _formKey,
+                      child: AutofillGroup(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            AuthTextField(
+                              label: 'Email',
+                              hint: 'user@email.com',
+                              icon: Icons.email_outlined,
+                              controller: _emailController,
+                              validator: validateEmail,
+                              keyboardType: TextInputType.emailAddress,
+                              autofillHints: const [AutofillHints.email],
+                              textInputAction: TextInputAction.next,
+                              onChanged: (_) => auth.clearError(),
+                            ),
+                            const SizedBox(height: 20),
+                            AuthTextField(
+                              label: 'Kata Sandi',
+                              hint: 'Masukkan kata sandi',
+                              icon: Icons.lock_outline,
+                              isPassword: true,
+                              controller: _passwordController,
+                              validator: validateLoginPassword,
+                              autofillHints: const [AutofillHints.password],
+                              textInputAction: TextInputAction.done,
+                              onChanged: (_) => auth.clearError(),
+                              onSubmitted: (_) => _submit(),
+                            ),
+                            const SizedBox(height: 24),
+                            if (auth.errorMessage != null)
+                              AuthErrorText(auth.errorMessage!),
+                            AuthSubmitButton(
+                              label: 'Masuk',
+                              isLoading: auth.isLoading,
+                              onPressed: _submit,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Silakan masuk ke akun DATAWISE Anda',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                    const SizedBox(height: 40),
-                    AuthTextField(
-                      label: 'Email',
-                      hint: 'Masukkan email Anda',
-                      icon: Icons.email_outlined,
-                      controller: _emailController,
-                      validator: validateEmail,
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.email],
-                      textInputAction: TextInputAction.next,
-                      onChanged: (_) => auth.clearError(),
-                    ),
-                    const SizedBox(height: 20),
-                    AuthTextField(
-                      label: 'Password',
-                      hint: 'Masukkan password Anda',
-                      icon: Icons.lock_outline,
-                      isPassword: true,
-                      controller: _passwordController,
-                      validator: validateLoginPassword,
-                      autofillHints: const [AutofillHints.password],
-                      textInputAction: TextInputAction.done,
-                      onChanged: (_) => auth.clearError(),
-                      onSubmitted: (_) => _submit(),
-                    ),
-                    const SizedBox(height: 28),
-                    if (auth.errorMessage != null)
-                      AuthErrorText(auth.errorMessage!),
-                    AuthSubmitButton(
-                      label: 'Masuk',
-                      isLoading: auth.isLoading,
-                      onPressed: _submit,
-                    ),
-                    const SizedBox(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text('Belum punya akun?'),
-                        TextButton(
-                          onPressed: _openRegister,
-                          child: const Text('Daftar'),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        'Belum punya akun?',
+                        style: TextStyle(color: AuthColors.textMuted),
+                      ),
+                      TextButton(
+                        onPressed: _openRegister,
+                        child: const Text(
+                          'Daftar',
+                          style: TextStyle(
+                            color: AuthColors.primary,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
                         ),
-                      ],
-                    ),
-                  ],
-                ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),

@@ -4,7 +4,10 @@ import 'package:provider/provider.dart';
 
 import '../../features/auth/auth_provider.dart';
 import '../../models/models.dart';
+import 'package_format.dart';
 import 'package_provider.dart';
+
+enum _Unit { gb, mb }
 
 class PackageFormPage extends StatefulWidget {
   const PackageFormPage({super.key});
@@ -14,22 +17,36 @@ class PackageFormPage extends StatefulWidget {
 }
 
 class _PackageFormPageState extends State<PackageFormPage> {
+  static const _operators = ['Telkomsel', 'Indosat', 'XL', 'Tri', 'Smartfren'];
+  static const _presetDays = [1, 7, 30];
+
   final _formKey = GlobalKey<FormState>();
 
   final _nameController = TextEditingController();
   final _operatorController = TextEditingController();
   final _totalQuotaController = TextEditingController();
-  final _initialUsedController = TextEditingController(text: '0');
-  final _priceController = TextEditingController();
+  final _usedQuotaController = TextEditingController();
 
   DataPackage? _editing;
   bool _initialized = false;
   bool _isActive = false;
 
+  _Unit _totalUnit = _Unit.gb;
+  _Unit _usedUnit = _Unit.gb;
+
+  /// null = kustom (tanggal berakhir dipilih manual).
+  int? _validityDays = 30;
+
   DateTime _startDate = DateUtils.dateOnly(DateTime.now());
-  DateTime _endDate = DateUtils.dateOnly(
-    DateTime.now().add(const Duration(days: 30)),
-  );
+  late DateTime _endDate = _startDate.add(const Duration(days: 30));
+
+  bool get _isEditing => _editing != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _operatorController.addListener(() => setState(() {}));
+  }
 
   @override
   void didChangeDependencies() {
@@ -43,19 +60,27 @@ class _PackageFormPageState extends State<PackageFormPage> {
     if (_editing != null) {
       final package = _editing!;
 
-      _nameController.text = package.name;
-      _operatorController.text = package.operator;
-      _totalQuotaController.text = (package.totalBytes / 1000000000).toString();
-      _initialUsedController.text = (package.initialUsedBytes / 1000000000)
-          .toString();
-      _priceController.text = package.price?.toString() ?? '';
+      _nameController.text = package.packageName;
+      _operatorController.text = package.operatorName ?? '';
+
+      final bytes = package.advertisedTotalQuotaBytes;
+      if (bytes >= 1000000000) {
+        _totalUnit = _Unit.gb;
+        _totalQuotaController.text = _trim(bytes / 1000000000);
+      } else {
+        _totalUnit = _Unit.mb;
+        _totalQuotaController.text = _trim(bytes / 1000000);
+      }
 
       _startDate = DateUtils.dateOnly(package.startDate);
       _endDate = DateUtils.dateOnly(package.endDate);
-      _isActive = package.isActive;
+
+      final length = _endDate.difference(_startDate).inDays;
+      _validityDays = _presetDays.contains(length) ? length : null;
+
+      _isActive = package.status == PackageStatus.active;
     } else {
-      final provider = context.read<PackageProvider>();
-      _isActive = provider.activePackage == null;
+      _isActive = context.read<PackageProvider>().activePackage == null;
     }
   }
 
@@ -64,15 +89,27 @@ class _PackageFormPageState extends State<PackageFormPage> {
     _nameController.dispose();
     _operatorController.dispose();
     _totalQuotaController.dispose();
-    _initialUsedController.dispose();
-    _priceController.dispose();
+    _usedQuotaController.dispose();
     super.dispose();
   }
 
-  String _formatDate(DateTime date) {
-    final day = date.day.toString().padLeft(2, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    return '$day/$month/${date.year}';
+  String _trim(double value) {
+    var text = value.toStringAsFixed(2);
+    if (text.contains('.')) {
+      text = text.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
+    }
+    return text;
+  }
+
+  double? _parse(String text) =>
+      double.tryParse(text.trim().replaceAll(',', '.'));
+
+  int _toBytes(double value, _Unit unit) =>
+      (value * (unit == _Unit.gb ? 1000000000 : 1000000)).round();
+
+  void _applyValidity(int days) {
+    _validityDays = days;
+    _endDate = _startDate.add(Duration(days: days));
   }
 
   Future<void> _selectStartDate() async {
@@ -88,10 +125,10 @@ class _PackageFormPageState extends State<PackageFormPage> {
     setState(() {
       _startDate = DateUtils.dateOnly(selected);
 
-      // Jika tanggal mulai melewati tanggal berakhir,
-      // sesuaikan tanggal berakhir menjadi 30 hari setelahnya.
-      if (!_endDate.isAfter(_startDate)) {
-        _endDate = _startDate.add(const Duration(days: 30));
+      if (_validityDays != null) {
+        _endDate = _startDate.add(Duration(days: _validityDays!));
+      } else if (_endDate.isBefore(_startDate)) {
+        _endDate = _startDate;
       }
     });
   }
@@ -99,69 +136,48 @@ class _PackageFormPageState extends State<PackageFormPage> {
   Future<void> _selectEndDate() async {
     final selected = await showDatePicker(
       context: context,
-      initialDate: _endDate,
-      firstDate: _startDate.add(const Duration(days: 1)),
+      initialDate: _endDate.isBefore(_startDate) ? _startDate : _endDate,
+      firstDate: _startDate,
       lastDate: DateTime(2100),
     );
 
     if (selected == null || !mounted) return;
 
-    setState(() {
-      _endDate = DateUtils.dateOnly(selected);
-    });
+    setState(() => _endDate = DateUtils.dateOnly(selected));
   }
 
-  String? _requiredText(String? value, String label) {
+  String? _validateTotal(String? value) {
+    final number = _parse(value ?? '');
     if (value == null || value.trim().isEmpty) {
-      return '$label wajib diisi.';
+      return 'Total kuota wajib diisi.';
+    }
+    if (number == null || !number.isFinite || number <= 0) {
+      return 'Total kuota harus berupa angka lebih dari 0.';
     }
     return null;
   }
 
-  String? _validateQuota(String? value, String label) {
-    if (value == null || value.trim().isEmpty) {
-      return '$label wajib diisi.';
-    }
-
-    final number = double.tryParse(value.replaceAll(',', '.'));
-
-    if (number == null || !number.isFinite || number < 0) {
-      return '$label harus berupa angka yang valid.';
-    }
-
-    return null;
-  }
-
-  String? _validateTotalQuota(String? value) {
-    final error = _validateQuota(value, 'Total kuota');
-    if (error != null) return error;
-
-    final number = double.parse(value!.replaceAll(',', '.'));
-
-    if (number <= 0) {
-      return 'Total kuota harus lebih dari 0 GB.';
-    }
-
-    return null;
-  }
-
-  String? _validatePrice(String? value) {
+  String? _validateUsed(String? value) {
     if (value == null || value.trim().isEmpty) return null;
 
-    final price = int.tryParse(value);
-
-    if (price == null || price < 0) {
-      return 'Harga harus berupa bilangan bulat positif.';
+    final used = _parse(value);
+    if (used == null || !used.isFinite || used < 0) {
+      return 'Kuota terpakai harus berupa angka 0 atau lebih.';
     }
 
+    final total = _parse(_totalQuotaController.text);
+    if (total != null && total > 0) {
+      if (_toBytes(used, _usedUnit) > _toBytes(total, _totalUnit)) {
+        return 'Kuota terpakai tidak boleh melebihi total kuota.';
+      }
+    }
     return null;
   }
 
   Future<void> _savePackage() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final auth = context.read<AuthProvider>();
-    final userId = auth.currentUser?.uid;
+    final userId = context.read<AuthProvider>().currentUser?.uid;
 
     if (userId == null || userId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -170,41 +186,51 @@ class _PackageFormPageState extends State<PackageFormPage> {
       return;
     }
 
-    final totalQuota = double.parse(
-      _totalQuotaController.text.replaceAll(',', '.'),
+    final totalBytes = _toBytes(
+      _parse(_totalQuotaController.text)!,
+      _totalUnit,
     );
 
-    final initialUsed = double.parse(
-      _initialUsedController.text.replaceAll(',', '.'),
-    );
-
-    final totalBytes = (totalQuota * 1000000000).round();
-    final initialUsedBytes = (initialUsed * 1000000000).round();
+    final usedValue = _parse(_usedQuotaController.text);
+    final usedBytes = (usedValue == null || usedValue <= 0)
+        ? 0
+        : _toBytes(usedValue, _usedUnit);
 
     final now = DateTime.now();
+    final today = DateUtils.dateOnly(now);
+    final endPassed = _endDate.isBefore(today);
+
+    final PackageStatus status;
+    if (_editing?.status == PackageStatus.archived) {
+      status = PackageStatus.archived;
+    } else if (endPassed) {
+      status = PackageStatus.expired;
+    } else if (_isActive) {
+      status = PackageStatus.active;
+    } else {
+      status = PackageStatus.inactive;
+    }
+
+    final operatorName = _operatorController.text.trim();
 
     final package = DataPackage(
       id: _editing?.id,
       userId: userId,
-      name: _nameController.text.trim(),
-      operator: _operatorController.text.trim(),
-      totalBytes: totalBytes,
-      initialUsedBytes: initialUsedBytes,
+      packageName: _nameController.text.trim(),
+      operatorName: operatorName.isEmpty ? null : operatorName,
+      advertisedTotalQuotaBytes: totalBytes,
       startDate: _startDate,
       endDate: _endDate,
-      price: _priceController.text.trim().isEmpty
-          ? null
-          : int.parse(_priceController.text),
-      isActive: _isActive,
+      status: status,
       createdAt: _editing?.createdAt ?? now,
       updatedAt: now,
     );
 
     final provider = context.read<PackageProvider>();
 
-    final success = _editing == null
-        ? await provider.addPackage(package)
-        : await provider.updatePackage(package);
+    final success = _isEditing
+        ? await provider.updatePackage(package)
+        : await provider.addPackage(package, initialUsedBytes: usedBytes);
 
     if (!mounted) return;
 
@@ -219,175 +245,229 @@ class _PackageFormPageState extends State<PackageFormPage> {
     }
   }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    TextInputType keyboardType = TextInputType.text,
-    String? Function(String?)? validator,
-    List<TextInputFormatter>? inputFormatters,
-  }) {
-    return TextFormField(
-      controller: controller,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        border: const OutlineInputBorder(),
-      ),
-      keyboardType: keyboardType,
-      validator: validator,
-      inputFormatters: inputFormatters,
+  Widget _unitToggle(_Unit value, ValueChanged<_Unit> onChanged) {
+    return SegmentedButton<_Unit>(
+      showSelectedIcon: false,
+      segments: const [
+        ButtonSegment(value: _Unit.gb, label: Text('GB')),
+        ButtonSegment(value: _Unit.mb, label: Text('MB')),
+      ],
+      selected: {value},
+      onSelectionChanged: (s) => onChanged(s.first),
     );
   }
 
-  Widget _buildDateField({
+  Widget _quotaRow({
+    required TextEditingController controller,
     required String label,
-    required DateTime date,
-    required VoidCallback onPressed,
+    required String hint,
+    required String? Function(String?) validator,
+    required _Unit unit,
+    required ValueChanged<_Unit> onUnit,
   }) {
-    return Column(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: onPressed,
-            icon: const Icon(Icons.calendar_today),
-            label: Text(_formatDate(date)),
+        Expanded(
+          child: TextFormField(
+            controller: controller,
+            decoration: InputDecoration(
+              labelText: label,
+              hintText: hint,
+              border: const OutlineInputBorder(),
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]')),
+            ],
+            validator: validator,
           ),
+        ),
+        const SizedBox(width: 12),
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: _unitToggle(unit, onUnit),
         ),
       ],
     );
   }
 
+  Widget _dateTile({
+    required String label,
+    required DateTime date,
+    VoidCallback? onTap,
+    String? badge,
+  }) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      onTap: onTap,
+      leading: const Icon(Icons.calendar_today),
+      title: Text(label, style: Theme.of(context).textTheme.bodySmall),
+      subtitle: Text(
+        formatDate(date),
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+      trailing: badge != null
+          ? Chip(label: Text(badge), visualDensity: VisualDensity.compact)
+          : (onTap != null ? const Icon(Icons.edit_calendar) : null),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final archived = _editing?.status == PackageStatus.archived;
+    final endPassed = _endDate.isBefore(DateUtils.dateOnly(DateTime.now()));
+
     return Consumer<PackageProvider>(
       builder: (context, provider, child) {
         return Scaffold(
           appBar: AppBar(
-            title: Text(_editing == null ? 'Tambah Paket' : 'Ubah Paket'),
+            title: Text(_isEditing ? 'Ubah Paket' : 'Tambah Paket Kuota'),
           ),
           body: Form(
             key: _formKey,
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                _buildTextField(
+                TextFormField(
                   controller: _nameController,
-                  label: 'Nama Paket',
-                  hint: 'Contoh: Internet 30 Hari',
-                  validator: (value) => _requiredText(value, 'Nama paket'),
-                ),
-                const SizedBox(height: 16),
-
-                _buildTextField(
-                  controller: _operatorController,
-                  label: 'Operator',
-                  hint: 'Contoh: Telkomsel',
-                  validator: (value) => _requiredText(value, 'Operator'),
-                ),
-                const SizedBox(height: 16),
-
-                _buildTextField(
-                  controller: _totalQuotaController,
-                  label: 'Total Kuota (GB)',
-                  hint: 'Contoh: 20',
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Nama Paket',
+                    hintText: 'Contoh: Paket Bulanan 30 GB',
+                    helperText: 'Wajib diisi',
+                    border: OutlineInputBorder(),
                   ),
-                  validator: _validateTotalQuota,
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Nama paket wajib diisi.'
+                      : null,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
 
-                _buildTextField(
-                  controller: _initialUsedController,
-                  label: 'Pemakaian Awal (GB)',
-                  hint: 'Contoh: 2',
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  validator: (value) {
-                    final error = _validateQuota(value, 'Pemakaian awal');
-
-                    if (error != null) return error;
-
-                    final used = double.parse(value!.replaceAll(',', '.'));
-
-                    final total = double.parse(
-                      _totalQuotaController.text.replaceAll(',', '.'),
-                    );
-
-                    if (used > total) {
-                      return 'Pemakaian awal melebihi total kuota.';
-                    }
-
-                    return null;
-                  },
+                Text(
+                  'Operator Telekomunikasi',
+                  style: Theme.of(context).textTheme.titleSmall,
                 ),
-                const SizedBox(height: 16),
-
-                Row(
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
                   children: [
-                    Expanded(
-                      child: _buildDateField(
-                        label: 'Tanggal Mulai',
-                        date: _startDate,
-                        onPressed: _selectStartDate,
+                    for (final name in _operators)
+                      ChoiceChip(
+                        label: Text(name),
+                        selected: _operatorController.text.trim() == name,
+                        onSelected: (_) => _operatorController.text = name,
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildDateField(
-                        label: 'Tanggal Berakhir',
-                        date: _endDate,
-                        onPressed: _selectEndDate,
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _operatorController,
+                  decoration: const InputDecoration(
+                    labelText: 'Operator (Opsional)',
+                    hintText: 'Pilih di atas atau ketik operator lain',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                _quotaRow(
+                  controller: _totalQuotaController,
+                  label: 'Jumlah Total Kuota',
+                  hint: 'Contoh: 30',
+                  validator: _validateTotal,
+                  unit: _totalUnit,
+                  onUnit: (u) => setState(() => _totalUnit = u),
+                ),
+
+                if (!_isEditing) ...[
+                  const SizedBox(height: 16),
+                  _quotaRow(
+                    controller: _usedQuotaController,
+                    label: 'Kuota Sudah Terpakai (Opsional)',
+                    hint: 'Isi jika paket sudah terpakai sebelumnya',
+                    validator: _validateUsed,
+                    unit: _usedUnit,
+                    onUnit: (u) => setState(() => _usedUnit = u),
+                  ),
+                ],
+                const SizedBox(height: 20),
+
+                Text(
+                  'Masa Berlaku',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final days in _presetDays)
+                      ChoiceChip(
+                        label: Text('$days Hari'),
+                        selected: _validityDays == days,
+                        onSelected: (_) => setState(() => _applyValidity(days)),
                       ),
+                    ChoiceChip(
+                      label: const Text('Kustom'),
+                      selected: _validityDays == null,
+                      onSelected: (_) => setState(() => _validityDays = null),
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-
-                _buildTextField(
-                  controller: _priceController,
-                  label: 'Harga Paket (Opsional)',
-                  hint: 'Contoh: 50000',
-                  keyboardType: TextInputType.number,
-                  validator: _validatePrice,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                const SizedBox(height: 8),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Column(
+                      children: [
+                        _dateTile(
+                          label: 'Tanggal Mulai',
+                          date: _startDate,
+                          onTap: _selectStartDate,
+                        ),
+                        const Divider(height: 1),
+                        _dateTile(
+                          label: _validityDays == null
+                              ? 'Tanggal Berakhir'
+                              : 'Berakhir Otomatis',
+                          date: _endDate,
+                          onTap: _validityDays == null ? _selectEndDate : null,
+                          badge: _validityDays == null ? null : 'Auto-sync',
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 16),
 
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Jadikan paket utama'),
-                  subtitle: const Text(
-                    'Paket utama digunakan sebagai paket aktif.',
+                  subtitle: Text(
+                    archived
+                        ? 'Paket yang diarsipkan tidak dapat diaktifkan.'
+                        : endPassed
+                        ? 'Paket yang sudah kedaluwarsa tidak dapat diaktifkan.'
+                        : 'Hanya satu paket yang bisa menjadi paket utama.',
                   ),
-                  value: _isActive,
-                  onChanged: (value) {
-                    setState(() {
-                      _isActive = value;
-                    });
-                  },
+                  value: _isActive && !archived && !endPassed,
+                  onChanged: (archived || endPassed)
+                      ? null
+                      : (value) => setState(() => _isActive = value),
                 ),
                 const SizedBox(height: 24),
 
-                FilledButton(
+                FilledButton.icon(
                   onPressed: provider.isLoading ? null : _savePackage,
-                  child: provider.isLoading
+                  icon: provider.isLoading
                       ? const SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text(
-                          _editing == null
-                              ? 'Simpan Paket'
-                              : 'Simpan Perubahan',
-                        ),
+                      : const Icon(Icons.save),
+                  label: Text(_isEditing ? 'Simpan Perubahan' : 'Simpan Paket'),
                 ),
               ],
             ),
