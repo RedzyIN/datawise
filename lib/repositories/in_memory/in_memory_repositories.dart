@@ -10,7 +10,6 @@ import '../user_repository.dart';
 
 String _memoryId(String prefix, int number) => '${prefix}_$number';
 
-
 class InMemoryUserRepository implements UserRepository {
   final Map<String, AppUser> items = {};
 
@@ -29,9 +28,7 @@ class InMemoryUserRepository implements UserRepository {
       displayName: user.displayName?.trim().isEmpty == true
           ? null
           : user.displayName?.trim(),
-      email: user.email?.trim().isEmpty == true
-          ? null
-          : user.email?.trim(),
+      email: user.email?.trim().isEmpty == true ? null : user.email?.trim(),
     );
   }
 
@@ -41,7 +38,9 @@ class InMemoryUserRepository implements UserRepository {
 
 class InMemoryPackageRepository implements PackageRepository {
   final Map<String, DataPackage> _items = {};
+  final Map<String, int> initialUsage = {};
   final List<void Function(String)> _deleteListeners = [];
+  final List<bool Function(String)> _deleteGuards = [];
   final List<void Function(DataPackage)> _addListeners = [];
   final List<void Function(DataPackage, DataPackage)> _updateListeners = [];
 
@@ -51,6 +50,11 @@ class InMemoryPackageRepository implements PackageRepository {
     _deleteListeners.add(listener);
   }
 
+  /// Guard mengembalikan false jika paket tidak boleh dihapus (punya riwayat).
+  void addDeleteGuard(bool Function(String packageId) guard) {
+    _deleteGuards.add(guard);
+  }
+
   void addAddListener(void Function(DataPackage) listener) {
     _addListeners.add(listener);
   }
@@ -58,6 +62,8 @@ class InMemoryPackageRepository implements PackageRepository {
   void addUpdateListener(void Function(DataPackage, DataPackage) listener) {
     _updateListeners.add(listener);
   }
+
+  static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
   void _deactivate(String userId, String exceptId) {
     for (final entry in _items.entries.toList()) {
@@ -72,21 +78,12 @@ class InMemoryPackageRepository implements PackageRepository {
   }
 
   void _validate(DataPackage package) {
-    final today = DateTime.now();
-    final todayDate = DateTime(today.year, today.month, today.day);
-
-    final endDate = DateTime(
-      package.endDate.year,
-      package.endDate.month,
-      package.endDate.day,
-    );
-
     if (package.userId.trim().isEmpty ||
         package.packageName.trim().isEmpty ||
         package.advertisedTotalQuotaBytes <= 0 ||
         package.endDate.isBefore(package.startDate) ||
         (package.status == PackageStatus.active &&
-            endDate.isBefore(todayDate))) {
+            _dateOnly(package.endDate).isBefore(_dateOnly(DateTime.now())))) {
       throw const AppException(
         AppException.validation,
         'Data paket tidak valid atau masa aktif paket sudah berakhir.',
@@ -95,8 +92,16 @@ class InMemoryPackageRepository implements PackageRepository {
   }
 
   @override
-  Future<String> add(DataPackage package) async {
+  Future<String> add(DataPackage package, {int initialUsedBytes = 0}) async {
     _validate(package);
+
+    if (initialUsedBytes < 0 ||
+        initialUsedBytes > package.advertisedTotalQuotaBytes) {
+      throw const AppException(
+        AppException.validation,
+        'Kuota terpakai tidak boleh melebihi total kuota.',
+      );
+    }
 
     final id = package.id ?? _memoryId('package', _nextId++);
 
@@ -113,6 +118,7 @@ class InMemoryPackageRepository implements PackageRepository {
     }
 
     _items[id] = saved;
+    if (initialUsedBytes > 0) initialUsage[id] = initialUsedBytes;
 
     for (final listener in _addListeners) {
       listener(saved);
@@ -145,6 +151,7 @@ class InMemoryPackageRepository implements PackageRepository {
       operatorName: package.operatorName?.trim().isEmpty == true
           ? null
           : package.operatorName?.trim(),
+      createdAt: oldPackage.createdAt,
     );
 
     for (final listener in _updateListeners) {
@@ -159,10 +166,27 @@ class InMemoryPackageRepository implements PackageRepository {
   }
 
   @override
+  Future<bool> hasUsageHistory(String packageId) async {
+    return (initialUsage[packageId] ?? 0) > 0 ||
+        _deleteGuards.any((guard) => !guard(packageId));
+  }
+
+  @override
   Future<void> delete(String packageId) async {
-    if (_items.remove(packageId) == null) {
+    if (!_items.containsKey(packageId)) {
       throw const AppException(AppException.notFound, 'Paket tidak ditemukan.');
     }
+
+    if (await hasUsageHistory(packageId)) {
+      throw const AppException(
+        AppException.validation,
+        'Paket yang sudah memiliki riwayat pemakaian tidak dapat dihapus. '
+        'Arsipkan paket ini sebagai gantinya.',
+      );
+    }
+
+    _items.remove(packageId);
+    initialUsage.remove(packageId);
 
     for (final listener in _deleteListeners) {
       listener(packageId);
@@ -170,18 +194,12 @@ class InMemoryPackageRepository implements PackageRepository {
   }
 
   @override
-  Future<DataPackage?> getById(String packageId) async {
-    return _items[packageId];
-  }
+  Future<DataPackage?> getById(String packageId) async => _items[packageId];
 
   @override
   Future<DataPackage?> getActive(String userId) async {
     return _items.values
-        .where(
-          (package) =>
-              package.userId == userId &&
-              package.status == PackageStatus.active,
-        )
+        .where((p) => p.userId == userId && p.status == PackageStatus.active)
         .firstOrNull;
   }
 
@@ -207,17 +225,9 @@ class InMemoryPackageRepository implements PackageRepository {
       throw const AppException(AppException.notFound, 'Paket tidak ditemukan.');
     }
 
-    final today = DateTime.now();
-    final todayDate = DateTime(today.year, today.month, today.day);
-    final endDate = DateTime(
-      package.endDate.year,
-      package.endDate.month,
-      package.endDate.day,
-    );
-
     if (package.status == PackageStatus.expired ||
         package.status == PackageStatus.archived ||
-        endDate.isBefore(todayDate)) {
+        _dateOnly(package.endDate).isBefore(_dateOnly(DateTime.now()))) {
       throw const AppException(
         AppException.validation,
         'Paket yang sudah kedaluwarsa atau diarsipkan tidak dapat diaktifkan.',
@@ -225,14 +235,35 @@ class InMemoryPackageRepository implements PackageRepository {
     }
 
     for (final entry in _items.entries.toList()) {
-      if (entry.value.userId == userId) {
+      if (entry.value.userId != userId) continue;
+
+      if (entry.key == packageId) {
+        _items[entry.key] = entry.value.copyWith(status: PackageStatus.active);
+      } else if (entry.value.status == PackageStatus.active) {
         _items[entry.key] = entry.value.copyWith(
-          status: entry.key == packageId
-              ? PackageStatus.active
-              : PackageStatus.inactive,
+          status: PackageStatus.inactive,
         );
       }
     }
+  }
+
+  @override
+  Future<int> markExpired(String userId) async {
+    final today = _dateOnly(DateTime.now());
+    var count = 0;
+
+    for (final entry in _items.entries.toList()) {
+      final p = entry.value;
+      if (p.userId == userId &&
+          (p.status == PackageStatus.active ||
+              p.status == PackageStatus.inactive) &&
+          _dateOnly(p.endDate).isBefore(today)) {
+        _items[entry.key] = p.copyWith(status: PackageStatus.expired);
+        count++;
+      }
+    }
+
+    return count;
   }
 }
 
@@ -511,9 +542,8 @@ class InMemoryClassificationRuleRepository
     packages.addDeleteListener(_handlePackageDelete);
     categories.addDeleteListener(_handleCategoryDelete);
     categories.addDeleteGuard(
-      (categoryId) => !items.values.any(
-        (rule) => rule.quotaCategoryId == categoryId,
-      ),
+      (categoryId) =>
+          !items.values.any((rule) => rule.quotaCategoryId == categoryId),
     );
   }
 
@@ -645,6 +675,9 @@ class InMemoryClassificationRuleRepository
 class InMemoryUsageRepository implements UsageRepository {
   InMemoryUsageRepository(this.packages, [this.categories, this.rules]) {
     packages.addDeleteListener(_handlePackageDelete);
+    packages.addDeleteGuard(
+      (packageId) => !records.values.any((r) => r.packageId == packageId),
+    );
     categories?.addDeleteListener(_handleCategoryDelete);
     categories?.addDeleteGuard(
       (categoryId) => !allocations.values.any(
@@ -681,7 +714,6 @@ class InMemoryUsageRepository implements UsageRepository {
       (_, allocation) => allocation.quotaCategoryId == categoryId,
     );
   }
-
 
   void _validateRecord(UsageRecord record) {
     if (record.rxBytes < 0 ||
@@ -841,7 +873,6 @@ class InMemoryUsageRepository implements UsageRepository {
     return result;
   }
 
-
   Future<void> _validateAndSaveAllocations(
     UsageRecord record,
     String usageRecordId,
@@ -856,10 +887,7 @@ class InMemoryUsageRepository implements UsageRepository {
       );
     }
 
-    final total = rows.fold<int>(
-      0,
-      (sum, item) => sum + item.allocatedBytes,
-    );
+    final total = rows.fold<int>(0, (sum, item) => sum + item.allocatedBytes);
     if (rows.any((item) => item.allocatedBytes < 0) ||
         total != record.totalBytes) {
       throw const AppException(
@@ -935,7 +963,9 @@ class InMemoryUsageRepository implements UsageRepository {
           );
         }
         final ruleRows = await rules!.getByPackage(record.packageId);
-        final rule = ruleRows.where((candidate) => candidate.id == ruleId).firstOrNull;
+        final rule = ruleRows
+            .where((candidate) => candidate.id == ruleId)
+            .firstOrNull;
         if (rule == null ||
             !rule.isEnabled ||
             rule.quotaCategoryId != categoryId) {
@@ -947,9 +977,7 @@ class InMemoryUsageRepository implements UsageRepository {
       }
     }
 
-    allocations.removeWhere(
-      (_, item) => item.usageRecordId == usageRecordId,
-    );
+    allocations.removeWhere((_, item) => item.usageRecordId == usageRecordId);
     for (final item in rows) {
       final id = item.id ?? _memoryId('allocation', _nextAllocationId++);
       allocations[id] = UsageAllocation(

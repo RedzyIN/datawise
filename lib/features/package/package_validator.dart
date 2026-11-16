@@ -30,4 +30,20 @@ class PackageValidator {
       );
     }
   }
+
+  static void validateInitialUsage(DataPackage package, int usedBytes) {
+    if (usedBytes < 0) {
+      throw const AppException(
+        AppException.validation,
+        'Kuota terpakai tidak boleh negatif.',
+      );
+    }
+
+    if (usedBytes > package.advertisedTotalQuotaBytes) {
+      throw const AppException(
+        AppException.validation,
+        'Kuota terpakai tidak boleh melebihi total kuota.',
+      );
+    }
+  }
 }

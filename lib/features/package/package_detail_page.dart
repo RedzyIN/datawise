@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/routes.dart';
 import '../../features/auth/auth_provider.dart';
 import '../../models/models.dart';
+import 'package_format.dart';
 import 'package_provider.dart';
 
 class PackageDetailPage extends StatefulWidget {
@@ -23,41 +24,18 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
     if (_packageId != null) return;
 
     final argument = ModalRoute.of(context)?.settings.arguments;
-
-    if (argument is String) {
-      _packageId = argument;
-    }
+    if (argument is String) _packageId = argument;
   }
 
-  String _formatBytes(num bytes) {
-    final gb = bytes / 1000000000;
-
-    if (gb >= 1) {
-      return '${gb.toStringAsFixed(2)} GB';
-    }
-
-    final mb = bytes / 1000000;
-    return '${mb.toStringAsFixed(2)} MB';
+  String _statusLabel(DataPackage p) {
+    if (p.isArchived) return 'Diarsipkan';
+    if (p.isExpiredAt()) return 'Kedaluwarsa';
+    return p.status == PackageStatus.active ? 'Paket Utama' : 'Paket Tambahan';
   }
 
-  String _formatDate(DateTime date) {
-    final day = date.day.toString().padLeft(2, '0');
-    final month = date.month.toString().padLeft(2, '0');
-
-    return '$day/$month/${date.year}';
-  }
-
-  String _statusLabel(PackageStatus status) {
-    switch (status) {
-      case PackageStatus.active:
-        return 'Paket Utama';
-      case PackageStatus.inactive:
-        return 'Paket Tambahan';
-      case PackageStatus.expired:
-        return 'Kedaluwarsa';
-      case PackageStatus.archived:
-        return 'Diarsipkan';
-    }
+  void _snack(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _editPackage(DataPackage package) async {
@@ -66,118 +44,117 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
 
   Future<void> _setActive(DataPackage package) async {
     final userId = context.read<AuthProvider>().currentUser?.uid;
-
     if (userId == null || package.id == null) return;
 
     final provider = context.read<PackageProvider>();
     provider.clearError();
 
-    await provider.setActive(userId, package.id!);
-
+    final ok = await provider.setActive(userId, package.id!);
     if (!mounted) return;
 
-    if (provider.errorMessage != null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(provider.errorMessage!)));
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Paket utama berhasil diubah.')),
+    _snack(
+      ok
+          ? 'Paket utama berhasil diubah.'
+          : provider.errorMessage ?? 'Gagal mengaktifkan paket.',
     );
   }
 
-  Future<void> _archivePackage(DataPackage package) async {
-    final confirmed = await showDialog<bool>(
+  Future<bool> _confirm({
+    required String title,
+    required String message,
+    required String confirmLabel,
+  }) async {
+    final result = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Arsipkan Paket?'),
-          content: Text(
-            'Paket "${package.packageName}" akan dipindahkan ke arsip. '
-            'Kategori, catatan penggunaan, aturan, dan riwayat notifikasi tetap disimpan.',
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Batal'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Arsipkan'),
-            ),
-          ],
-        );
-      },
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(confirmLabel),
+          ),
+        ],
+      ),
+    );
+    return result == true;
+  }
+
+  Future<void> _archivePackage(DataPackage package) async {
+    final confirmed = await _confirm(
+      title: 'Arsipkan Paket?',
+      message:
+          'Paket "${package.packageName}" akan dipindahkan ke arsip. '
+          'Kategori, catatan penggunaan, aturan, dan riwayat notifikasi '
+          'tetap disimpan.',
+      confirmLabel: 'Arsipkan',
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     final userId = context.read<AuthProvider>().currentUser?.uid;
     if (userId == null || package.id == null) return;
 
     final provider = context.read<PackageProvider>();
     provider.clearError();
-    final success = await provider.archivePackage(package.id!, userId);
 
+    final success = await provider.archivePackage(package.id!, userId);
     if (!mounted) return;
+
     if (success) {
       Navigator.pop(context);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(provider.errorMessage ?? 'Gagal mengarsipkan paket.'),
-        ),
-      );
+      _snack(provider.errorMessage ?? 'Gagal mengarsipkan paket.');
     }
   }
 
   Future<void> _deletePackage(DataPackage package) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Hapus Paket?'),
-          content: Text(
-            'Paket "${package.packageName}" beserta kategori, catatan penggunaan, '
-            'aturan klasifikasi, dan riwayat notifikasinya akan dihapus permanen. '
-            'Tindakan ini tidak dapat dibatalkan.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Batal'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Hapus Permanen'),
-            ),
-          ],
-        );
-      },
+    final provider = context.read<PackageProvider>();
+
+    final hasUsage = await provider.hasUsageHistory(package.id!);
+    if (!mounted) return;
+
+    // Aturan kontrak data: paket dengan riwayat pemakaian tidak boleh dihapus.
+    if (hasUsage) {
+      final archive = await _confirm(
+        title: 'Paket Tidak Dapat Dihapus',
+        message:
+            'Paket "${package.packageName}" sudah memiliki riwayat '
+            'pemakaian sehingga tidak boleh dihapus. '
+            'Anda dapat mengarsipkannya agar tidak muncul di daftar aktif.',
+        confirmLabel: 'Arsipkan',
+      );
+      if (archive && mounted && !package.isArchived) {
+        await _archivePackage(package);
+      }
+      return;
+    }
+
+    final confirmed = await _confirm(
+      title: 'Hapus Paket?',
+      message:
+          'Paket "${package.packageName}" akan dihapus permanen. '
+          'Tindakan ini tidak dapat dibatalkan.',
+      confirmLabel: 'Hapus Permanen',
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     final userId = context.read<AuthProvider>().currentUser?.uid;
-
     if (userId == null || package.id == null) return;
 
-    final provider = context.read<PackageProvider>();
     provider.clearError();
-
     final success = await provider.deletePackage(package.id!, userId);
-
     if (!mounted) return;
 
     if (success) {
       Navigator.pop(context);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(provider.errorMessage ?? 'Gagal menghapus paket.'),
-        ),
-      );
+      _snack(provider.errorMessage ?? 'Gagal menghapus paket.');
     }
   }
 
@@ -207,16 +184,7 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
   Widget build(BuildContext context) {
     return Consumer<PackageProvider>(
       builder: (context, provider, child) {
-        DataPackage? package;
-
-        if (_packageId != null) {
-          for (final item in provider.packages) {
-            if (item.id == _packageId) {
-              package = item;
-              break;
-            }
-          }
-        }
+        final package = provider.findById(_packageId);
 
         if (package == null) {
           return Scaffold(
@@ -231,8 +199,11 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
           );
         }
 
-        final currentPackage = package;
-        final isActive = currentPackage.status == PackageStatus.active;
+        final theme = Theme.of(context);
+        final expired = package.isExpiredAt();
+        final archived = package.isArchived;
+        final isActive = package.status == PackageStatus.active && !expired;
+        final canActivate = !isActive && !expired && !archived;
 
         return Scaffold(
           appBar: AppBar(
@@ -242,7 +213,7 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
                 tooltip: 'Edit paket',
                 onPressed: provider.isLoading
                     ? null
-                    : () => _editPackage(currentPackage),
+                    : () => _editPackage(package),
                 icon: const Icon(Icons.edit),
               ),
             ],
@@ -257,32 +228,37 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        currentPackage.packageName,
-                        style: Theme.of(context).textTheme.headlineSmall,
+                        package.packageName,
+                        style: theme.textTheme.headlineSmall,
                       ),
-                      if (currentPackage.operatorName != null &&
-                          currentPackage.operatorName!.isNotEmpty) ...[
+                      if ((package.operatorName ?? '').isNotEmpty) ...[
                         const SizedBox(height: 6),
                         Text(
-                          currentPackage.operatorName!,
-                          style: Theme.of(context).textTheme.titleMedium,
+                          package.operatorName!,
+                          style: theme.textTheme.titleMedium,
                         ),
                       ],
                       const SizedBox(height: 12),
-                      Chip(label: Text(_statusLabel(currentPackage.status))),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          Chip(label: Text(_statusLabel(package))),
+                          if (!expired && !archived)
+                            Chip(
+                              avatar: const Icon(Icons.schedule, size: 16),
+                              label: Text(
+                                '${package.daysRemaining()} hari lagi',
+                              ),
+                            ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
               ),
-
               const SizedBox(height: 20),
-
-              Text(
-                'Informasi Kuota',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
+              Text('Informasi Kuota', style: theme.textTheme.titleLarge),
               const SizedBox(height: 8),
-
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -290,9 +266,7 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
                     children: [
                       _buildInfo(
                         label: 'Total Kuota',
-                        value: _formatBytes(
-                          currentPackage.advertisedTotalQuotaBytes,
-                        ),
+                        value: formatBytes(package.advertisedTotalQuotaBytes),
                       ),
                       const Divider(),
                       _buildInfo(label: 'Pemakaian', value: 'Belum tersedia'),
@@ -302,15 +276,9 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 20),
-
-              Text(
-                'Informasi Paket',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
+              Text('Informasi Paket', style: theme.textTheme.titleLarge),
               const SizedBox(height: 8),
-
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -318,67 +286,56 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
                     children: [
                       _buildInfo(
                         label: 'Tanggal Mulai',
-                        value: _formatDate(currentPackage.startDate),
+                        value: formatDate(package.startDate),
                       ),
                       const Divider(),
                       _buildInfo(
                         label: 'Tanggal Berakhir',
-                        value: _formatDate(currentPackage.endDate),
+                        value: formatDate(package.endDate),
                       ),
                       const Divider(),
-                      _buildInfo(
-                        label: 'Status',
-                        value: _statusLabel(currentPackage.status),
-                      ),
+                      _buildInfo(label: 'Status', value: _statusLabel(package)),
                     ],
                   ),
                 ),
               ),
-
               const SizedBox(height: 24),
-
-              if (!isActive &&
-                  currentPackage.status != PackageStatus.expired &&
-                  currentPackage.status != PackageStatus.archived)
+              if (canActivate) ...[
                 FilledButton.icon(
                   onPressed: provider.isLoading
                       ? null
-                      : () => _setActive(currentPackage),
+                      : () => _setActive(package),
                   icon: const Icon(Icons.check_circle_outline),
                   label: const Text('Jadikan Paket Utama'),
                 ),
-
-              const SizedBox(height: 10),
-
+                const SizedBox(height: 10),
+              ],
               OutlinedButton.icon(
                 onPressed: provider.isLoading
                     ? null
-                    : () => _editPackage(currentPackage),
-                icon: const Icon(Icons.edit),
-                label: const Text('Edit Paket'),
+                    : () => _editPackage(package),
+                icon: const Icon(Icons.tune),
+                label: const Text('Edit Informasi Paket'),
               ),
-
               const SizedBox(height: 10),
-
-              if (currentPackage.status != PackageStatus.archived) ...[
+              if (!archived) ...[
                 OutlinedButton.icon(
                   onPressed: provider.isLoading
                       ? null
-                      : () => _archivePackage(currentPackage),
+                      : () => _archivePackage(package),
                   icon: const Icon(Icons.archive_outlined),
                   label: const Text('Arsipkan Paket'),
                 ),
                 const SizedBox(height: 10),
               ],
-
               TextButton.icon(
                 onPressed: provider.isLoading
                     ? null
-                    : () => _deletePackage(currentPackage),
+                    : () => _deletePackage(package),
                 icon: const Icon(Icons.delete_outline),
                 label: const Text('Hapus Paket'),
                 style: TextButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.error,
+                  foregroundColor: theme.colorScheme.error,
                 ),
               ),
             ],

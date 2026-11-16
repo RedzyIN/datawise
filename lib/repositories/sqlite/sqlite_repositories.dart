@@ -23,7 +23,6 @@ String _newSqlId(String prefix) {
   return '${prefix}_${DateTime.now().microsecondsSinceEpoch}_$suffix';
 }
 
-
 class SqliteUserRepository implements UserRepository {
   SqliteUserRepository([DbHelper? helper]) : h = helper ?? DbHelper.instance;
 
@@ -39,16 +38,9 @@ class SqliteUserRepository implements UserRepository {
       );
     }
 
+    final name = user.displayName?.trim();
+    final email = user.email?.trim();
     final now = DateTime.now().toUtc().toIso8601String();
-    final values = <String, Object?>{
-      'display_name': user.displayName?.trim().isEmpty == true
-          ? null
-          : user.displayName?.trim(),
-      'email': user.email?.trim().isEmpty == true
-          ? null
-          : user.email?.trim(),
-      'updated_at': now,
-    };
 
     final db = await h.database;
     await db.transaction((tx) async {
@@ -63,13 +55,20 @@ class SqliteUserRepository implements UserRepository {
       if (existing.isEmpty) {
         await tx.insert('users', {
           'id': uid,
-          ...values,
+          'display_name': (name == null || name.isEmpty) ? null : name,
+          'email': (email == null || email.isEmpty) ? null : email,
           'created_at': now,
+          'updated_at': now,
         });
       } else {
+        // Nilai kosong tidak menimpa nama/email yang sudah tersimpan.
         await tx.update(
           'users',
-          values,
+          {
+            if (name != null && name.isNotEmpty) 'display_name': name,
+            if (email != null && email.isNotEmpty) 'email': email,
+            'updated_at': now,
+          },
           where: 'id = ?',
           whereArgs: [uid],
         );
@@ -97,7 +96,6 @@ class SqliteUserRepository implements UserRepository {
     );
   }
 }
-
 
 Future<String> _upsertUsageRecord(
   DatabaseExecutor txn,
@@ -182,22 +180,15 @@ class SqlitePackageRepository implements PackageRepository {
 
   final DbHelper h;
 
+  static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
   void _validatePackage(DataPackage package) {
-    final today = DateTime.now();
-    final todayOnly = DateTime(today.year, today.month, today.day);
-
-    final endDateOnly = DateTime(
-      package.endDate.year,
-      package.endDate.month,
-      package.endDate.day,
-    );
-
     if (package.userId.trim().isEmpty ||
         package.packageName.trim().isEmpty ||
         package.advertisedTotalQuotaBytes <= 0 ||
         package.endDate.isBefore(package.startDate) ||
         (package.status == PackageStatus.active &&
-            endDateOnly.isBefore(todayOnly))) {
+            _dateOnly(package.endDate).isBefore(_dateOnly(DateTime.now())))) {
       throw const AppException(
         AppException.validation,
         'Data paket tidak valid atau masa aktif paket sudah berakhir.',
@@ -205,9 +196,28 @@ class SqlitePackageRepository implements PackageRepository {
     }
   }
 
+  Future<bool> _hasUsage(DatabaseExecutor db, String packageId) async {
+    final rows = await db.query(
+      'usage_records',
+      columns: ['id'],
+      where: 'package_id = ?',
+      whereArgs: [packageId],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
   @override
-  Future<String> add(DataPackage package) async {
+  Future<String> add(DataPackage package, {int initialUsedBytes = 0}) async {
     _validatePackage(package);
+
+    if (initialUsedBytes < 0 ||
+        initialUsedBytes > package.advertisedTotalQuotaBytes) {
+      throw const AppException(
+        AppException.validation,
+        'Kuota terpakai tidak boleh melebihi total kuota.',
+      );
+    }
 
     final db = await h.database;
 
@@ -244,6 +254,41 @@ class SqlitePackageRepository implements PackageRepository {
       );
 
       await tx.insert('quota_categories', mainCategory.toMap());
+
+      if (initialUsedBytes > 0) {
+        final now = DateTime.now();
+        final start = storedPackage.startDate;
+        final end = now.isAfter(start)
+            ? now
+            : start.add(const Duration(minutes: 1));
+        final usageId = _newSqlId('usage');
+
+        final record = UsageRecord(
+          id: usageId,
+          packageId: id,
+          source: UsageSource.manual,
+          recordScope: UsageRecordScope.manualTotal,
+          networkType: NetworkType.mobile,
+          rxBytes: initialUsedBytes,
+          txBytes: 0,
+          periodStartAt: start,
+          periodEndAt: end,
+          recordedAt: now,
+          sourceKey: 'initial_$id',
+        );
+        await tx.insert('usage_records', record.toMap());
+
+        final allocation = UsageAllocation(
+          id: _newSqlId('alloc'),
+          packageId: id,
+          usageRecordId: usageId,
+          quotaCategoryId: mainCategory.id,
+          allocatedBytes: initialUsedBytes,
+          allocationMethod: AllocationMethod.manualUser,
+          createdAt: now,
+        );
+        await tx.insert('usage_allocations', allocation.toMap());
+      }
 
       return id;
     });
@@ -336,20 +381,18 @@ class SqlitePackageRepository implements PackageRepository {
         operatorName: package.operatorName?.trim().isEmpty == true
             ? null
             : package.operatorName?.trim(),
+        createdAt: oldPackage.createdAt,
       );
 
       final packageMap = storedPackage.toMap();
 
       if (newTotal >= oldPackage.advertisedTotalQuotaBytes) {
-        // Kuota naik. Perbarui paket dahulu agar trigger menerima
-        // kenaikan kapasitas kategori MAIN.
         await tx.update(
           'data_packages',
           packageMap,
           where: 'id = ?',
           whereArgs: [id],
         );
-
         await tx.update(
           'quota_categories',
           {'capacity_bytes': newMainBytes},
@@ -357,15 +400,12 @@ class SqlitePackageRepository implements PackageRepository {
           whereArgs: [mainId],
         );
       } else {
-        // Kuota turun. Kurangi MAIN dahulu agar jumlah kategori
-        // tidak melebihi kuota paket yang baru.
         await tx.update(
           'quota_categories',
           {'capacity_bytes': newMainBytes},
           where: 'id = ?',
           whereArgs: [mainId],
         );
-
         await tx.update(
           'data_packages',
           packageMap,
@@ -374,6 +414,11 @@ class SqlitePackageRepository implements PackageRepository {
         );
       }
     });
+  }
+
+  @override
+  Future<bool> hasUsageHistory(String packageId) async {
+    return _hasUsage(await h.database, packageId);
   }
 
   @override
@@ -394,15 +439,17 @@ class SqlitePackageRepository implements PackageRepository {
         );
       }
 
-      // Hapus data yang memiliki foreign key RESTRICT terlebih dahulu.
-      await tx.delete(
-        'alert_logs',
-        where: 'package_id = ?',
-        whereArgs: [packageId],
-      );
+      // Aturan kontrak data: paket dengan riwayat pemakaian tidak boleh dihapus.
+      if (await _hasUsage(tx, packageId)) {
+        throw const AppException(
+          AppException.validation,
+          'Paket yang sudah memiliki riwayat pemakaian tidak dapat dihapus. '
+          'Arsipkan paket ini sebagai gantinya.',
+        );
+      }
 
       await tx.delete(
-        'usage_allocations',
+        'alert_logs',
         where: 'package_id = ?',
         whereArgs: [packageId],
       );
@@ -417,8 +464,7 @@ class SqlitePackageRepository implements PackageRepository {
         whereArgs: [packageId],
       );
 
-      // Data kategori, usage record, dan data limit yang memiliki
-      // ON DELETE CASCADE akan mengikuti penghapusan paket.
+      // Kategori dan pengaturan batas ikut terhapus lewat ON DELETE CASCADE.
       await tx.delete('data_packages', where: 'id = ?', whereArgs: [packageId]);
     });
   }
@@ -478,17 +524,9 @@ class SqlitePackageRepository implements PackageRepository {
 
       final package = DataPackage.fromMap(rows.first);
 
-      final today = DateTime.now();
-      final todayOnly = DateTime(today.year, today.month, today.day);
-      final endDateOnly = DateTime(
-        package.endDate.year,
-        package.endDate.month,
-        package.endDate.day,
-      );
-
       if (package.status == PackageStatus.archived ||
           package.status == PackageStatus.expired ||
-          endDateOnly.isBefore(todayOnly)) {
+          _dateOnly(package.endDate).isBefore(_dateOnly(DateTime.now()))) {
         throw const AppException(
           AppException.validation,
           'Paket yang kedaluwarsa atau diarsipkan tidak dapat diaktifkan.',
@@ -497,18 +535,29 @@ class SqlitePackageRepository implements PackageRepository {
 
       await tx.update(
         'data_packages',
-        {'status': 'INACTIVE'},
+        {'status': 'INACTIVE', 'updated_at': timeToIso(DateTime.now())},
         where: 'user_id = ? AND status = ?',
         whereArgs: [userId, 'ACTIVE'],
       );
 
       await tx.update(
         'data_packages',
-        {'status': 'ACTIVE'},
+        {'status': 'ACTIVE', 'updated_at': timeToIso(DateTime.now())},
         where: 'id = ? AND user_id = ?',
         whereArgs: [packageId, userId],
       );
     });
+  }
+
+  @override
+  Future<int> markExpired(String userId) async {
+    final db = await h.database;
+    return db.update(
+      'data_packages',
+      {'status': 'EXPIRED', 'updated_at': timeToIso(DateTime.now())},
+      where: "user_id = ? AND status IN ('ACTIVE','INACTIVE') AND end_date < ?",
+      whereArgs: [userId, dateToDb(_dateOnly(DateTime.now()))],
+    );
   }
 }
 
@@ -955,7 +1004,6 @@ class SqliteUsageRepository implements UsageRepository {
       );
     }
 
-
     if ((record.source == UsageSource.manual) !=
         (record.recordScope == UsageRecordScope.manualTotal)) {
       throw const AppException(
@@ -973,7 +1021,6 @@ class SqliteUsageRepository implements UsageRepository {
       );
     }
   }
-
 
   @override
   Future<String> upsertRecord(UsageRecord record) async {
@@ -1123,7 +1170,6 @@ class SqliteUsageRepository implements UsageRepository {
     return rows.map(UsageRecord.fromMap).toList();
   }
 
-
   Future<void> _replaceAllocationsInTransaction(
     DatabaseExecutor tx,
     UsageRecord record,
@@ -1270,7 +1316,12 @@ class SqliteUsageRepository implements UsageRepository {
         );
       }
       final record = UsageRecord.fromMap(rows.single);
-      await _replaceAllocationsInTransaction(tx, record, usageRecordId, allocations);
+      await _replaceAllocationsInTransaction(
+        tx,
+        record,
+        usageRecordId,
+        allocations,
+      );
     });
   }
 

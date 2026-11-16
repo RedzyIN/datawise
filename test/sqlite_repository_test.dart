@@ -119,10 +119,7 @@ void main() {
       ),
     );
 
-    expect(
-      (await packages.getById(packageId))!.status,
-      PackageStatus.archived,
-    );
+    expect((await packages.getById(packageId))!.status, PackageStatus.archived);
     expect(await usage.getRecords(packageId), hasLength(1));
   });
 
@@ -270,45 +267,55 @@ void main() {
     );
   });
 
-  test('classification rule order honors PRD priority and specificity', () async {
-    final packageId = await packages.add(samplePackage());
-    final main = (await categories.getByPackage(packageId)).single;
-    final now = DateTime(2026, 11, 15);
+  test(
+    'classification rule order honors PRD priority and specificity',
+    () async {
+      final packageId = await packages.add(samplePackage());
+      final main = (await categories.getByPackage(packageId)).single;
+      final now = DateTime(2026, 11, 15);
 
-    await dbRules.add(ClassificationRule(
-      id: 'rule-general',
-      quotaCategoryId: main.id!,
-      ruleName: 'Semua aplikasi',
-      priority: 100,
-      isEnabled: true,
-      createdAt: now,
-    ));
-    await dbRules.add(ClassificationRule(
-      id: 'rule-specific',
-      quotaCategoryId: main.id!,
-      ruleName: 'Aplikasi tertentu',
-      appPackageName: 'com.example.app',
-      startMinute: 0,
-      endMinute: 1440,
-      priority: 100,
-      isEnabled: true,
-      createdAt: now,
-    ));
-    await dbRules.add(ClassificationRule(
-      id: 'rule-higher',
-      quotaCategoryId: main.id!,
-      ruleName: 'Prioritas tertinggi',
-      priority: 200,
-      isEnabled: true,
-      createdAt: now,
-    ));
+      await dbRules.add(
+        ClassificationRule(
+          id: 'rule-general',
+          quotaCategoryId: main.id!,
+          ruleName: 'Semua aplikasi',
+          priority: 100,
+          isEnabled: true,
+          createdAt: now,
+        ),
+      );
+      await dbRules.add(
+        ClassificationRule(
+          id: 'rule-specific',
+          quotaCategoryId: main.id!,
+          ruleName: 'Aplikasi tertentu',
+          appPackageName: 'com.example.app',
+          startMinute: 0,
+          endMinute: 1440,
+          priority: 100,
+          isEnabled: true,
+          createdAt: now,
+        ),
+      );
+      await dbRules.add(
+        ClassificationRule(
+          id: 'rule-higher',
+          quotaCategoryId: main.id!,
+          ruleName: 'Prioritas tertinggi',
+          priority: 200,
+          isEnabled: true,
+          createdAt: now,
+        ),
+      );
 
-    final ordered = await dbRules.getByPackage(packageId);
-    expect(
-      ordered.map((rule) => rule.id).toList(),
-      ['rule-higher', 'rule-specific', 'rule-general'],
-    );
-  });
+      final ordered = await dbRules.getByPackage(packageId);
+      expect(ordered.map((rule) => rule.id).toList(), [
+        'rule-higher',
+        'rule-specific',
+        'rule-general',
+      ]);
+    },
+  );
 
   test(
     'usage records from automatic and manual sources stay separate',
@@ -567,7 +574,6 @@ void main() {
     );
   });
 
-
   test('allocation total must equal usage record total', () async {
     final packageId = await packages.add(samplePackage());
     final record = sampleUsage(
@@ -615,18 +621,84 @@ void main() {
     );
   });
 
+  test('package with usage history cannot be deleted', () async {
+    final packageId = await packages.add(samplePackage());
+
+    await usage.upsertRecord(sampleUsage(packageId: packageId));
+
+    expect(await packages.hasUsageHistory(packageId), isTrue);
+
+    await expectLater(packages.delete(packageId), throwsA(isA<AppException>()));
+
+    // Paket, kategori, dan riwayat tetap utuh.
+    expect(await packages.getById(packageId), isNotNull);
+    expect(await categories.getByPackage(packageId), hasLength(1));
+    expect(await usage.getRecords(packageId), hasLength(1));
+  });
+
   test(
-    'deleting package also deletes its categories and usage records',
+    'package without usage history can be deleted with its categories',
     () async {
       final packageId = await packages.add(samplePackage());
 
-      await usage.upsertRecord(sampleUsage(packageId: packageId));
+      expect(await packages.hasUsageHistory(packageId), isFalse);
 
       await packages.delete(packageId);
 
       expect(await packages.getById(packageId), isNull);
       expect(await categories.getByPackage(packageId), isEmpty);
-      expect(await usage.getRecords(packageId), isEmpty);
+    },
+  );
+
+  test(
+    'initial used quota creates usage history and blocks deletion',
+    () async {
+      final packageId = await packages.add(
+        samplePackage(),
+        initialUsedBytes: 1000000000,
+      );
+
+      expect(await packages.hasUsageHistory(packageId), isTrue);
+
+      final records = await usage.getRecords(packageId);
+      expect(records, hasLength(1));
+      expect(records.single.source, UsageSource.manual);
+      expect(records.single.totalBytes, 1000000000);
+
+      final allocations = await usage.getAllocations(records.single.id!);
+      expect(allocations, hasLength(1));
+      expect(allocations.single.allocationMethod, AllocationMethod.manualUser);
+
+      await expectLater(
+        packages.delete(packageId),
+        throwsA(isA<AppException>()),
+      );
+    },
+  );
+
+  test(
+    'only one package can be ACTIVE per user at the database level',
+    () async {
+      final firstId = await packages.add(samplePackage());
+      final db = await helper.database;
+
+      // Jika indeks unik parsial dari PackageSchema sudah terpasang di
+      // DbHelper, memaksa paket kedua menjadi ACTIVE harus ditolak.
+      final secondId = await packages.add(
+        samplePackage(status: PackageStatus.inactive),
+      );
+
+      await expectLater(
+        db.update(
+          'data_packages',
+          {'status': 'ACTIVE'},
+          where: 'id = ?',
+          whereArgs: [secondId],
+        ),
+        throwsA(anything),
+      );
+
+      expect((await packages.getActive(userId))!.id, firstId);
     },
   );
 }

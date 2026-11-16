@@ -28,6 +28,24 @@ class DataPackage {
     required this.updatedAt,
   });
 
+  static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  bool get isArchived => status == PackageStatus.archived;
+
+  /// Kedaluwarsa jika status EXPIRED atau tanggal berakhir sudah lewat.
+  bool isExpiredAt([DateTime? now]) {
+    final today = _dateOnly(now ?? DateTime.now());
+    return status == PackageStatus.expired ||
+        _dateOnly(endDate).isBefore(today);
+  }
+
+  /// Sisa hari sampai tanggal berakhir (minimal 0).
+  int daysRemaining([DateTime? now]) {
+    final today = _dateOnly(now ?? DateTime.now());
+    final diff = _dateOnly(endDate).difference(today).inDays;
+    return diff < 0 ? 0 : diff;
+  }
+
   Map<String, Object?> toMap() => {
     if (id != null) 'id': id,
     'user_id': userId,

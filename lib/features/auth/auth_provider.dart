@@ -44,27 +44,52 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
+  /// Menyimpan profil ke SQLite lalu melengkapi nama dari SQLite
+  /// bila Firebase belum mengembalikan nama.
+  Future<AppUser> _persistAndResolve(AppUser user) async {
+    final repo = _userRepository;
+    if (repo == null) return user;
+
+    await repo.upsert(user);
+    if (user.displayName != null && user.displayName!.trim().isNotEmpty) {
+      return user;
+    }
+
+    final stored = await repo.getById(user.uid);
+    return AppUser(
+      uid: user.uid,
+      displayName: stored?.displayName,
+      email: user.email,
+    );
+  }
+
   Future<bool> login(String email, String password) {
     return _run(() async {
       final user = await _service.login(email, password);
+      late final AppUser resolved;
       try {
-        await _userRepository?.upsert(user);
+        resolved = await _persistAndResolve(user);
       } catch (_) {
         try {
           await _service.logout();
         } catch (_) {}
         rethrow;
       }
-      _setUser(user);
+      _setUser(resolved);
     });
   }
 
-  /// Akun baru disimpan ke profil lokal, lalu pengguna kembali ke LoginPage.
-  Future<bool> register(String email, String password) {
+  /// Akun baru (beserta nama) disimpan ke Firebase dan profil lokal,
+  /// lalu pengguna kembali ke LoginPage.
+  Future<bool> register(String name, String email, String password) {
     return _run(() async {
       _ignoreAuthEvents = true;
       try {
-        final user = await _service.register(email, password);
+        final user = await _service.register(
+          email,
+          password,
+          displayName: name,
+        );
         await _userRepository?.upsert(user);
         await _service.logout();
       } catch (_) {
@@ -96,9 +121,10 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _handleAuthStateChange(AppUser? user) async {
     try {
       if (user != null) {
-        await _userRepository?.upsert(user);
+        _setUser(await _persistAndResolve(user));
+      } else {
+        _setUser(null);
       }
-      _setUser(user);
     } catch (_) {
       _errorMessage = _unknownErrorMessage;
       _setUser(null);

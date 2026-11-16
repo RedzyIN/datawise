@@ -37,7 +37,9 @@ UsageRecord createUsageRecord({
   return UsageRecord(
     packageId: packageId,
     recordScope: scope,
-    appPackageName: scope == UsageRecordScope.appUsage ? 'com.example.app' : null,
+    appPackageName: scope == UsageRecordScope.appUsage
+        ? 'com.example.app'
+        : null,
     networkType: NetworkType.mobile,
     periodStartAt: start,
     periodEndAt: end,
@@ -68,9 +70,7 @@ void main() {
       final packageId = await packages.add(createPackage());
       final usage = InMemoryUsageRepository(packages, categories);
 
-      await usage.upsertRecord(
-        createUsageRecord(packageId: packageId),
-      );
+      await usage.upsertRecord(createUsageRecord(packageId: packageId));
 
       final current = await packages.getById(packageId);
       await packages.update(
@@ -131,51 +131,98 @@ void main() {
         throwsA(isA<AppException>()),
       );
     });
+
+    test('markExpired mengubah paket yang lewat tanggal berakhir', () async {
+      final repo = InMemoryPackageRepository();
+
+      final oldId = await repo.add(
+        createPackage(
+          status: PackageStatus.inactive,
+          endDate: DateTime.now().subtract(const Duration(days: 1)),
+        ),
+      );
+      final okId = await repo.add(
+        createPackage(status: PackageStatus.inactive),
+      );
+
+      final changed = await repo.markExpired('u1');
+
+      expect(changed, 1);
+      expect((await repo.getById(oldId))!.status, PackageStatus.expired);
+      expect((await repo.getById(okId))!.status, PackageStatus.inactive);
+    });
+
+    test('kuota awal terpakai dihitung sebagai riwayat pemakaian', () async {
+      final repo = InMemoryPackageRepository();
+
+      final withUsage = await repo.add(createPackage(), initialUsedBytes: 1000);
+      final withoutUsage = await repo.add(createPackage(userId: 'u2'));
+
+      expect(await repo.hasUsageHistory(withUsage), isTrue);
+      expect(await repo.hasUsageHistory(withoutUsage), isFalse);
+
+      await expectLater(repo.delete(withUsage), throwsA(isA<AppException>()));
+      await repo.delete(withoutUsage);
+      expect(await repo.getById(withoutUsage), isNull);
+    });
   });
 
   group('InMemoryClassificationRuleRepository', () {
-    test('classification rules order honors priority and specificity', () async {
-      final packages = InMemoryPackageRepository();
-      final categories = InMemoryQuotaCategoryRepository(packages);
-      final packageId = await packages.add(createPackage());
-      final main = (await categories.getByPackage(packageId)).single;
-      final rules = InMemoryClassificationRuleRepository(packages, categories);
-      final now = DateTime(2026, 11, 15);
+    test(
+      'classification rules order honors priority and specificity',
+      () async {
+        final packages = InMemoryPackageRepository();
+        final categories = InMemoryQuotaCategoryRepository(packages);
+        final packageId = await packages.add(createPackage());
+        final main = (await categories.getByPackage(packageId)).single;
+        final rules = InMemoryClassificationRuleRepository(
+          packages,
+          categories,
+        );
+        final now = DateTime(2026, 11, 15);
 
-      await rules.add(ClassificationRule(
-        id: 'rule-general',
-        quotaCategoryId: main.id!,
-        ruleName: 'Semua aplikasi',
-        priority: 100,
-        isEnabled: true,
-        createdAt: now,
-      ));
-      await rules.add(ClassificationRule(
-        id: 'rule-specific',
-        quotaCategoryId: main.id!,
-        ruleName: 'Aplikasi tertentu',
-        appPackageName: 'com.example.app',
-        startMinute: 0,
-        endMinute: 1440,
-        priority: 100,
-        isEnabled: true,
-        createdAt: now,
-      ));
-      await rules.add(ClassificationRule(
-        id: 'rule-higher',
-        quotaCategoryId: main.id!,
-        ruleName: 'Prioritas tertinggi',
-        priority: 200,
-        isEnabled: true,
-        createdAt: now,
-      ));
+        await rules.add(
+          ClassificationRule(
+            id: 'rule-general',
+            quotaCategoryId: main.id!,
+            ruleName: 'Semua aplikasi',
+            priority: 100,
+            isEnabled: true,
+            createdAt: now,
+          ),
+        );
+        await rules.add(
+          ClassificationRule(
+            id: 'rule-specific',
+            quotaCategoryId: main.id!,
+            ruleName: 'Aplikasi tertentu',
+            appPackageName: 'com.example.app',
+            startMinute: 0,
+            endMinute: 1440,
+            priority: 100,
+            isEnabled: true,
+            createdAt: now,
+          ),
+        );
+        await rules.add(
+          ClassificationRule(
+            id: 'rule-higher',
+            quotaCategoryId: main.id!,
+            ruleName: 'Prioritas tertinggi',
+            priority: 200,
+            isEnabled: true,
+            createdAt: now,
+          ),
+        );
 
-      final ordered = await rules.getByPackage(packageId);
-      expect(
-        ordered.map((rule) => rule.id).toList(),
-        ['rule-higher', 'rule-specific', 'rule-general'],
-      );
-    });
+        final ordered = await rules.getByPackage(packageId);
+        expect(ordered.map((rule) => rule.id).toList(), [
+          'rule-higher',
+          'rule-specific',
+          'rule-general',
+        ]);
+      },
+    );
   });
 
   group('InMemoryUsageRepository', () {
@@ -304,7 +351,6 @@ void main() {
       );
     });
 
-
     test('alokasi parsial ditolak dan record tidak disimpan', () async {
       final packages = InMemoryPackageRepository();
       final packageId = await packages.add(createPackage());
@@ -374,7 +420,7 @@ void main() {
       expect(await usage.getAllocations(recordId), hasLength(1));
     });
 
-    test('menghapus paket ikut menghapus catatan dan alokasi', () async {
+    test('paket dengan riwayat pemakaian tidak dapat dihapus', () async {
       final packages = InMemoryPackageRepository();
       final packageId = await packages.add(createPackage());
       final usage = InMemoryUsageRepository(packages);
@@ -395,10 +441,36 @@ void main() {
         ],
       );
 
-      await packages.delete(packageId);
+      expect(await packages.hasUsageHistory(packageId), isTrue);
 
-      expect(await usage.getRecords(packageId), isEmpty);
-      expect(await usage.getAllocations(recordId), isEmpty);
+      await expectLater(
+        packages.delete(packageId),
+        throwsA(isA<AppException>()),
+      );
+
+      // Paket, catatan, dan alokasi tetap utuh.
+      expect(await packages.getById(packageId), isNotNull);
+      expect(await usage.getRecords(packageId), hasLength(1));
+      expect(await usage.getAllocations(recordId), hasLength(1));
     });
+
+    test(
+      'paket tanpa riwayat pemakaian dapat dihapus beserta kategorinya',
+      () async {
+        final packages = InMemoryPackageRepository();
+        final categories = InMemoryQuotaCategoryRepository(packages);
+        final packageId = await packages.add(createPackage());
+        final usage = InMemoryUsageRepository(packages, categories);
+
+        expect(await packages.hasUsageHistory(packageId), isFalse);
+        expect(await categories.getByPackage(packageId), hasLength(1));
+
+        await packages.delete(packageId);
+
+        expect(await packages.getById(packageId), isNull);
+        expect(await categories.getByPackage(packageId), isEmpty);
+        expect(await usage.getRecords(packageId), isEmpty);
+      },
+    );
   });
 }
