@@ -1,21 +1,34 @@
-// MILIK ARSITEK. Pembantu konversi tanggal/waktu sesuai kontrak beku:
-// tanggal = 'YYYY-MM-DD' (lokal), waktu = ms UTC.
+// Tanggal kalender disimpan sebagai YYYY-MM-DD.
+// Timestamp disimpan sebagai ISO-8601 UTC. Fungsi millisecond tetap tersedia
+// untuk kebutuhan migrasi dari skema database lama.
 
-DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+DateTime dateOnly(DateTime value) =>
+    DateTime(value.year, value.month, value.day);
 
-String dateToDb(DateTime d) {
-  final x = dateOnly(d);
-  return '${x.year.toString().padLeft(4, '0')}-'
-      '${x.month.toString().padLeft(2, '0')}-'
-      '${x.day.toString().padLeft(2, '0')}';
+String dateToDb(DateTime value) {
+  final date = dateOnly(value);
+  return '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
 }
 
-DateTime dateFromDb(String s) {
-  final p = s.split('-');
-  return DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
+DateTime dateFromDb(String value) {
+  final parts = value.split('-');
+  if (parts.length != 3) {
+    throw FormatException('Format tanggal tidak valid: $value');
+  }
+  return DateTime(
+    int.parse(parts[0]),
+    int.parse(parts[1]),
+    int.parse(parts[2]),
+  );
 }
 
-int timeToMs(DateTime d) => d.toUtc().millisecondsSinceEpoch;
+String timeToIso(DateTime value) => value.toUtc().toIso8601String();
 
-DateTime timeFromMs(int ms) =>
-    DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal();
+DateTime timeFromIso(String value) => DateTime.parse(value).toLocal();
+
+int timeToMs(DateTime value) => value.toUtc().millisecondsSinceEpoch;
+
+DateTime timeFromMs(int value) =>
+    DateTime.fromMillisecondsSinceEpoch(value, isUtc: true).toLocal();

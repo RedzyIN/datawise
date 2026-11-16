@@ -4,10 +4,25 @@
 final _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
 final _hasLetter = RegExp(r'[A-Za-z]');
 final _hasDigit = RegExp(r'\d');
+final _multiSpace = RegExp(r'\s+');
+
+const int nameMinLength = 2;
+const int nameMaxLength = 100;
 
 /// Email dipotong spasi kiri-kanan dan diubah ke huruf kecil
 /// sebelum divalidasi dan dikirim ke Firebase.
 String normalizeEmail(String value) => value.trim().toLowerCase();
+
+/// Nama dipotong spasi kiri-kanan dan spasi berulang dijadikan satu.
+String normalizeName(String value) => value.trim().replaceAll(_multiSpace, ' ');
+
+String? validateName(String? value) {
+  final name = normalizeName(value ?? '');
+  if (name.isEmpty) return 'Nama lengkap wajib diisi.';
+  if (name.length < nameMinLength) return 'Nama minimal 2 karakter.';
+  if (name.length > nameMaxLength) return 'Nama maksimal 100 karakter.';
+  return null;
+}
 
 String? validateEmail(String? value) {
   final email = normalizeEmail(value ?? '');
@@ -28,9 +43,7 @@ String? validatePassword(String? value) {
   return null;
 }
 
-/// Untuk form LOGIN: hanya cek tidak kosong. Aturan panjang/huruf/angka
-/// hanya berlaku saat membuat password, jadi password yang salah tetap
-/// dikirim ke Firebase dan pesannya "Email atau password salah."
+/// Untuk form LOGIN: hanya cek tidak kosong.
 String? validateLoginPassword(String? value) {
   if (value == null || value.isEmpty) return 'Password wajib diisi.';
   return null;

@@ -9,46 +9,40 @@ class PackageValidator {
       );
     }
 
-    if (package.name.trim().isEmpty) {
+    if (package.packageName.trim().isEmpty) {
       throw const AppException(
         AppException.validation,
         'Nama paket wajib diisi.',
       );
     }
 
-    if (package.operator.trim().isEmpty) {
-      throw const AppException(
-        AppException.validation,
-        'Nama operator wajib diisi.',
-      );
-    }
-
-    if (package.totalBytes <= 0) {
+    if (package.advertisedTotalQuotaBytes <= 0) {
       throw const AppException(
         AppException.validation,
         'Total kuota harus lebih dari 0.',
       );
     }
 
-    if (package.initialUsedBytes < 0 ||
-        package.initialUsedBytes > package.totalBytes) {
+    if (package.endDate.isBefore(package.startDate)) {
       throw const AppException(
         AppException.validation,
-        'Pemakaian awal tidak valid.',
+        'Tanggal berakhir tidak boleh sebelum tanggal mulai.',
+      );
+    }
+  }
+
+  static void validateInitialUsage(DataPackage package, int usedBytes) {
+    if (usedBytes < 0) {
+      throw const AppException(
+        AppException.validation,
+        'Kuota terpakai tidak boleh negatif.',
       );
     }
 
-    if (!package.endDate.isAfter(package.startDate)) {
+    if (usedBytes > package.advertisedTotalQuotaBytes) {
       throw const AppException(
         AppException.validation,
-        'Tanggal berakhir harus setelah tanggal mulai.',
-      );
-    }
-
-    if (package.price != null && package.price! < 0) {
-      throw const AppException(
-        AppException.validation,
-        'Harga tidak boleh negatif.',
+        'Kuota terpakai tidak boleh melebihi total kuota.',
       );
     }
   }

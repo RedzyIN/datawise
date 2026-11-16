@@ -1,0 +1,45 @@
+name: Verify and package database migration branch
+
+on:
+  push:
+    branches:
+      - review/database-repository-integrity
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Create source archive
+        run: |
+          zip -r datawise-database-migration.zip . \
+            -x ".git/*" ".dart_tool/*" "build/*" "android/.gradle/*" ".idea/*" "*.db"
+
+      - name: Upload project ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: datawise-database-migration
+          path: datawise-database-migration.zip
+          if-no-files-found: error
+          retention-days: 7

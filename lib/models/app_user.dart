@@ -1,8 +1,11 @@
-// MILIK ARSITEK. KONTRAK BEKU #3.
-
 class AppUser {
   final String uid;
-  final String email;
+  final String? displayName;
+  final String? email;
 
-  const AppUser({required this.uid, required this.email});
+  const AppUser({
+    required this.uid,
+    this.displayName,
+    this.email,
+  });
 }
