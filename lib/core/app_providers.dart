@@ -1,5 +1,5 @@
 // MILIK ARSITEK. Satu-satunya tempat mendaftarkan Repository, Service, dan Provider.
-// Minggu 2: ganti InMemory* dengan implementasi sqflite (bentuk sama).
+
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 
@@ -13,33 +13,70 @@ import '../services/auth_service.dart';
 import '../services/usage_service.dart';
 
 List<SingleChildWidget> buildAppProviders() {
-  // --- Repository (versi in-memory, minggu 1) ---
-  final packageRepo = InMemoryPackageRepository();
-  final UsageRepository usageRepo = InMemoryUsageRepository(packageRepo);
-  final AlertRepository alertRepo = InMemoryAlertRepository();
-  final SettingsRepository settingsRepo = InMemorySettingsRepository();
+  // --- Repository SQLite ---
+  final PackageRepository packageRepo = SqlitePackageRepository();
+
+  final QuotaCategoryRepository categoryRepo = SqliteQuotaCategoryRepository();
+
+  final ClassificationRuleRepository ruleRepo =
+      SqliteClassificationRuleRepository();
+
+  final UsageRepository usageRepo = SqliteUsageRepository();
+
+  final DataLimitRepository dataLimitRepo = SqliteDataLimitRepository();
+
+  final AlertRepository alertRepo = SqliteAlertRepository();
+
+  final SettingsRepository settingsRepo = SqliteSettingsRepository();
+
+  final UserRepository userRepo = SqliteUserRepository();
 
   // --- Service ---
   final AuthService authService = FirebaseAuthService();
-  final UsageService usageService = UsageServiceImpl(usageRepo, settingsRepo);
+
+  final UsageService usageService = UsageServiceImpl();
+
   final AlertService alertService = AlertServiceImpl(alertRepo, settingsRepo);
 
   return [
     Provider<PackageRepository>.value(value: packageRepo),
+
+    Provider<QuotaCategoryRepository>.value(value: categoryRepo),
+
+    Provider<ClassificationRuleRepository>.value(value: ruleRepo),
+
     Provider<UsageRepository>.value(value: usageRepo),
+
+    Provider<DataLimitRepository>.value(value: dataLimitRepo),
+
     Provider<AlertRepository>.value(value: alertRepo),
+
     Provider<SettingsRepository>.value(value: settingsRepo),
+
+    Provider<UserRepository>.value(value: userRepo),
+
     Provider<AuthService>.value(value: authService),
+
     Provider<UsageService>.value(value: usageService),
+
     Provider<AlertService>.value(value: alertService),
 
-    // --- Provider (ChangeNotifier) ---
-    ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider(authService)),
-    ChangeNotifierProvider<PackageProvider>(create: (_) => PackageProvider(packageRepo)),
+    // --- Provider ---
+    ChangeNotifierProvider<AuthProvider>(
+      create: (_) => AuthProvider(authService),
+    ),
+
+    ChangeNotifierProvider<PackageProvider>(
+      create: (_) => PackageProvider(packageRepo),
+    ),
+
     ChangeNotifierProvider<UsageProvider>(
-        create: (_) => UsageProvider(usageService, usageRepo, packageRepo)),
+      create: (_) => UsageProvider(usageService, usageRepo, categoryRepo),
+    ),
+
     ChangeNotifierProvider<DashboardProvider>(
-        create: (_) =>
-            DashboardProvider(packageRepo, usageRepo, usageService, alertService)),
+      create: (_) =>
+          DashboardProvider(packageRepo, usageRepo, usageService, alertService),
+    ),
   ];
 }
