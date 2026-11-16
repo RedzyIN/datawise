@@ -1,22 +1,20 @@
 import 'package:flutter/services.dart';
 
 import '../models/models.dart';
-import '../repositories/repositories.dart';
 
 abstract class UsageService {
   Future<bool> hasPermission();
+
   Future<void> openUsageAccessSettings();
+
   Future<void> openInternetSettings();
+
   Future<UsageReading> readMobileUsage(DateTime start, DateTime end);
+
   Future<UsageReading> refreshToday(DataPackage package);
 }
 
 class UsageServiceImpl implements UsageService {
-  UsageServiceImpl(this._usageRepo, this._settingsRepo);
-
-  final UsageRepository _usageRepo;
-  final SettingsRepository _settingsRepo;
-
   static const MethodChannel _channel = MethodChannel('datawise/usage');
 
   UsageReading _reading(
@@ -145,30 +143,8 @@ class UsageServiceImpl implements UsageService {
       );
     }
 
-    final reading = await readMobileUsage(start, now);
-
-    if (reading.status != UsageReadStatus.ok) {
-      return reading;
-    }
-
-    try {
-      await _usageRepo.upsertRecord(
-        package.id!,
-        start,
-        reading.totalBytes,
-        UsageSource.auto,
-      );
-
-      await _settingsRepo.set('last_usage_refresh', timeToMs(now).toString());
-
-      return reading;
-    } catch (e) {
-      return _reading(
-        UsageReadStatus.error,
-        start,
-        now,
-        message: 'Gagal menyimpan penggunaan data: $e',
-      );
-    }
+    // Hasilnya tetap statistik agregat perangkat.
+    // Tidak disimpan sebagai pemakaian paket.
+    return readMobileUsage(start, now);
   }
 }

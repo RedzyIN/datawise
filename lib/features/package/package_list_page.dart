@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart';
 
+import '../usage_monitor/usage_monitor_poc_page.dart';
 import '../../core/routes.dart';
 import '../../features/auth/auth_provider.dart';
 import '../../models/models.dart';
@@ -88,6 +90,21 @@ class _PackageListPageState extends State<PackageListPage> {
                       style: theme.textTheme.headlineSmall,
                     ),
                   ),
+
+                  if (kDebugMode)
+                    IconButton(
+                      tooltip: 'Pengujian Usage Monitor',
+                      icon: const Icon(Icons.bug_report_outlined),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const UsageMonitorPocPage(),
+                          ),
+                        );
+                      },
+                    ),
+
                   Chip(
                     avatar: const Icon(Icons.circle, size: 10),
                     label: Text('${running.length} Aktif'),

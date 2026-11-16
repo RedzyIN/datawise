@@ -10,6 +10,8 @@ class FakeUsageService implements UsageService {
   bool permissionGranted = false;
   int refreshCallCount = 0;
 
+  UsageReading? nextReading;
+
   @override
   Future<bool> hasPermission() async {
     return permissionGranted;
@@ -38,29 +40,64 @@ class FakeUsageService implements UsageService {
 
     final now = DateTime.now();
 
-    return UsageReading(
-      status: UsageReadStatus.ok,
-      totalBytes: 1000,
-      start: dateOnly(now),
-      end: now,
-      message: null,
-    );
+    return nextReading ??
+        UsageReading(
+          status: UsageReadStatus.ok,
+          totalBytes: 1000,
+          start: dateOnly(now),
+          end: now,
+          message: null,
+        );
   }
 }
 
 void main() {
   late FakeUsageService fakeService;
+
   late InMemoryPackageRepository packageRepo;
+  late InMemoryQuotaCategoryRepository categoryRepo;
   late InMemoryUsageRepository usageRepo;
+
   late UsageProvider provider;
 
   setUp(() {
     fakeService = FakeUsageService();
-    packageRepo = InMemoryPackageRepository();
-    usageRepo = InMemoryUsageRepository(packageRepo);
 
-    provider = UsageProvider(fakeService, usageRepo, packageRepo);
+    packageRepo = InMemoryPackageRepository();
+
+    // Repository kategori harus dibuat sebelum paket ditambahkan.
+    categoryRepo = InMemoryQuotaCategoryRepository(packageRepo);
+
+    // Repository penggunaan membutuhkan repository kategori
+    // untuk memvalidasi UsageAllocation.
+    usageRepo = InMemoryUsageRepository(packageRepo, categoryRepo);
+
+    provider = UsageProvider(fakeService, usageRepo, categoryRepo);
   });
+
+  tearDown(() {
+    provider.dispose();
+  });
+
+  Future<DataPackage> createActivePackage() async {
+    final now = DateTime.now();
+
+    final package = DataPackage(
+      userId: 'user-1',
+      packageName: 'Paket Internet',
+      operatorName: 'Telkomsel',
+      advertisedTotalQuotaBytes: 10 * 1024 * 1024,
+      startDate: dateOnly(now),
+      endDate: dateOnly(now.add(const Duration(days: 30))),
+      status: PackageStatus.active,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    final packageId = await packageRepo.add(package);
+
+    return (await packageRepo.getById(packageId))!;
+  }
 
   group('UsageProvider - Check Permission', () {
     test('izin diberikan, hasPermission bernilai true', () async {
@@ -81,148 +118,158 @@ void main() {
       expect(provider.errorMessage, isNotNull);
     });
   });
+
   group('UsageProvider - Refresh', () {
-    test('berhasil membaca penggunaan data', () async {
-      final packageId = await packageRepo.add(
-        DataPackage(
-          userId: 'user-1',
-          name: 'Paket Internet',
-          operator: 'Telkomsel',
-          totalBytes: 10 * 1024 * 1024,
-          initialUsedBytes: 0,
-          startDate: DateTime.now(),
-          endDate: DateTime.now().add(const Duration(days: 30)),
-          price: 50000,
-          isActive: true,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        ),
-      );
+    test('berhasil membaca penggunaan data perangkat', () async {
+      final package = await createActivePackage();
 
-      final package = await packageRepo.getById(packageId);
-
-      await provider.refresh(package!);
+      await provider.refresh(package);
 
       expect(fakeService.refreshCallCount, 1);
       expect(provider.lastReading, isNotNull);
       expect(provider.lastReading!.totalBytes, 1000);
+      expect(provider.lastReading!.status, UsageReadStatus.ok);
       expect(provider.lastRefresh, isNotNull);
       expect(provider.isLoading, false);
       expect(provider.errorMessage, isNull);
     });
-  });
-  group('UsageProvider - Manual Usage', () {
-    test('berhasil menyimpan penggunaan data manual', () async {
-      final packageId = await packageRepo.add(
-        DataPackage(
-          userId: 'user-1',
-          name: 'Paket Internet',
-          operator: 'Telkomsel',
-          totalBytes: 10 * 1024 * 1024,
-          initialUsedBytes: 0,
-          startDate: DateTime.now(),
-          endDate: DateTime.now().add(const Duration(days: 30)),
-          price: 50000,
-          isActive: true,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        ),
-      );
 
-      final package = await packageRepo.getById(packageId);
+    test('hasil pembacaan agregat perangkat tidak disimpan sebagai pemakaian paket', () async {
+      final package = await createActivePackage();
 
-      await provider.saveManualToday(package!, 5000);
+      await provider.refresh(package);
 
-      final records = await usageRepo.getRecords(packageId);
-
-      expect(records.length, 1);
-      expect(records.first.usedBytes, 5000);
-      expect(records.first.source, UsageSource.manual);
-      expect(provider.errorMessage, isNull);
-    });
-    test('berhasil menghapus penggunaan data manual', () async {
-      final packageId = await packageRepo.add(
-        DataPackage(
-          userId: 'user-1',
-          name: 'Paket Internet',
-          operator: 'Telkomsel',
-          totalBytes: 10 * 1024 * 1024,
-          initialUsedBytes: 0,
-          startDate: DateTime.now(),
-          endDate: DateTime.now().add(const Duration(days: 30)),
-          price: 50000,
-          isActive: true,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        ),
-      );
-
-      final package = await packageRepo.getById(packageId);
-
-      // Simpan data manual terlebih dahulu.
-      await provider.saveManualToday(package!, 5000);
-
-      // Hapus data manual hari ini.
-      await provider.deleteManualToday(package);
-
-      final records = await usageRepo.getRecords(packageId);
+      final records = await usageRepo.getRecords(package.id!);
 
       expect(records, isEmpty);
-      expect(provider.errorMessage, isNull);
+      expect(provider.lastReading!.totalBytes, 1000);
     });
-    test('menolak penggunaan data dengan nilai negatif', () async {
-      final packageId = await packageRepo.add(
-        DataPackage(
-          userId: 'user-1',
-          name: 'Paket Internet',
-          operator: 'Telkomsel',
-          totalBytes: 10 * 1024 * 1024,
-          initialUsedBytes: 0,
-          startDate: DateTime.now(),
-          endDate: DateTime.now().add(const Duration(days: 30)),
-          price: 50000,
-          isActive: true,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        ),
+
+    test('gagal membaca penggunaan data', () async {
+      final package = await createActivePackage();
+
+      fakeService.nextReading = UsageReading(
+        status: UsageReadStatus.permissionDenied,
+        totalBytes: 0,
+        start: dateOnly(DateTime.now()),
+        end: DateTime.now(),
+        message: 'Izin Usage Access belum diberikan.',
       );
 
-      final package = await packageRepo.getById(packageId);
+      await provider.refresh(package);
 
-      await provider.saveManualToday(package!, -5000);
+      expect(provider.lastReading, isNotNull);
+      expect(provider.lastReading!.status, UsageReadStatus.permissionDenied);
+      expect(provider.errorMessage, isNotNull);
+      expect(provider.isLoading, false);
+    });
+  });
 
-      final records = await usageRepo.getRecords(packageId);
+  group('UsageProvider - Manual Usage', () {
+    test('berhasil menyimpan penggunaan manual beserta alokasinya', () async {
+      final package = await createActivePackage();
+
+      await provider.saveManualToday(package, 5000);
+
+      final records = await usageRepo.getRecords(package.id!);
+
+      expect(records.length, 1);
+
+      final record = records.single;
+
+      expect(record.totalBytes, 5000);
+      expect(record.rxBytes, 5000);
+      expect(record.txBytes, 0);
+      expect(record.source, UsageSource.manual);
+      expect(record.recordScope, UsageRecordScope.manualTotal);
+      expect(record.networkType, NetworkType.mobile);
+
+      final allocations = await usageRepo.getAllocations(record.id!);
+
+      expect(allocations.length, 1);
+      expect(allocations.single.allocatedBytes, 5000);
+      expect(allocations.single.allocationMethod, AllocationMethod.manualUser);
+
+      final categories = await categoryRepo.getByPackage(package.id!);
+
+      final mainCategory = categories.firstWhere(
+        (category) => category.categoryType == QuotaCategoryType.main,
+      );
+
+      expect(allocations.single.quotaCategoryId, mainCategory.id);
+
+      expect(provider.errorMessage, isNull);
+    });
+
+    test('menyimpan ulang penggunaan manual hari ini memperbarui catatan yang sama', () async {
+      final package = await createActivePackage();
+
+      await provider.saveManualToday(package, 5000);
+      await provider.saveManualToday(package, 9000);
+
+      final records = await usageRepo.getRecords(package.id!);
+
+      expect(records.length, 1);
+      expect(records.single.totalBytes, 9000);
+
+      final allocations = await usageRepo.getAllocations(records.single.id!);
+
+      expect(allocations.length, 1);
+      expect(allocations.single.allocatedBytes, 9000);
+
+      expect(provider.errorMessage, isNull);
+    });
+
+    test('berhasil menghapus penggunaan manual hari ini', () async {
+      final package = await createActivePackage();
+
+      await provider.saveManualToday(package, 5000);
+
+      final recordsBeforeDelete = await usageRepo.getRecords(package.id!);
+
+      expect(recordsBeforeDelete.length, 1);
+
+      await provider.deleteManualToday(package);
+
+      final recordsAfterDelete = await usageRepo.getRecords(package.id!);
+
+      expect(recordsAfterDelete, isEmpty);
+
+      final allocations = await usageRepo.getAllocationsByPackage(package.id!);
+
+      expect(allocations, isEmpty);
+      expect(provider.errorMessage, isNull);
+    });
+
+    test('menolak penggunaan data dengan nilai negatif', () async {
+      final package = await createActivePackage();
+
+      await provider.saveManualToday(package, -5000);
+
+      final records = await usageRepo.getRecords(package.id!);
 
       expect(records, isEmpty);
       expect(provider.errorMessage, isNotNull);
     });
-  });
-  group('UsageProvider - Initial Usage', () {
-    test('berhasil mengubah penggunaan awal paket', () async {
-      final packageId = await packageRepo.add(
-        DataPackage(
-          userId: 'user-1',
-          name: 'Paket Internet',
-          operator: 'Telkomsel',
-          totalBytes: 10 * 1024 * 1024,
-          initialUsedBytes: 0,
-          startDate: DateTime.now(),
-          endDate: DateTime.now().add(const Duration(days: 30)),
-          price: 50000,
-          isActive: true,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        ),
+
+    test('menolak paket yang belum memiliki ID', () async {
+      final now = DateTime.now();
+
+      final package = DataPackage(
+        userId: 'user-1',
+        packageName: 'Paket Tanpa ID',
+        operatorName: 'Telkomsel',
+        advertisedTotalQuotaBytes: 10 * 1024 * 1024,
+        startDate: dateOnly(now),
+        endDate: dateOnly(now.add(const Duration(days: 30))),
+        status: PackageStatus.active,
+        createdAt: now,
+        updatedAt: now,
       );
 
-      final package = await packageRepo.getById(packageId);
+      await provider.saveManualToday(package, 5000);
 
-      await provider.setInitialUsed(package!, 2000);
-
-      final updatedPackage = await packageRepo.getById(packageId);
-
-      expect(updatedPackage!.initialUsedBytes, 2000);
-      expect(provider.errorMessage, isNull);
+      expect(provider.errorMessage, isNotNull);
     });
   });
 }
