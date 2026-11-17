@@ -239,7 +239,7 @@ class _DashboardPageState extends State<DashboardPage> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: List.generate(7, (i) {
-              final fraction = maxValue == 0 ? 0.04 : (values[i] / maxValue).clamp(.04, 1.0);
+              final fraction = maxValue == 0 ? 0.04 : (values[i] / maxValue).clamp(.04, 1.0).toDouble();
               final day = DateTime(now.year, now.month, now.day).subtract(Duration(days: 6 - i));
               const labels = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
               return Expanded(child: Padding(
