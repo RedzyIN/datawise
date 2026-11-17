@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'history_detail_page.dart';
 import '../../features/auth/auth_provider.dart';
 import '../../features/package/package_provider.dart';
 import '../../models/data_package.dart';
+import '../../models/enums.dart';
 
 class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key});
@@ -26,45 +28,43 @@ class _HistoryPageState extends State<HistoryPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    final authProvider = context.watch<AuthProvider>();
-    final uid = authProvider.currentUser?.uid;
+    final uid = context.watch<AuthProvider>().currentUser?.uid;
 
-    if (uid != _requestedUid) {
-      _requestedUid = uid;
-      _hasLoadedCurrentUser = false;
+    if (uid == _requestedUid) return;
 
-      if (uid != null) {
-        Future.microtask(() async {
-          if (!mounted) return;
+    _requestedUid = uid;
+    _hasLoadedCurrentUser = false;
 
-          final currentUid = context.read<AuthProvider>().currentUser?.uid;
+    if (uid == null) return;
 
-          if (currentUid != uid) return;
+    Future.microtask(() async {
+      if (!mounted) return;
 
-          await context.read<PackageProvider>().load(uid);
+      final currentUid = context.read<AuthProvider>().currentUser?.uid;
+      if (currentUid != uid) return;
 
-          if (!mounted) return;
+      await context.read<PackageProvider>().load(uid);
 
-          final latestUid = context.read<AuthProvider>().currentUser?.uid;
+      if (!mounted) return;
 
-          if (latestUid == uid) {
-            setState(() {
-              _hasLoadedCurrentUser = true;
-            });
-          }
+      final latestUid = context.read<AuthProvider>().currentUser?.uid;
+
+      if (latestUid == uid) {
+        setState(() {
+          _hasLoadedCurrentUser = true;
         });
       }
-    }
+    });
   }
 
-  bool _isExpired(DataPackage package) {
-    return !package.isArchived && package.isExpiredAt();
-  }
+  List<DataPackage> _getHistoryPackages(List<DataPackage> packages) {
+    final historyPackages = packages.where((package) {
+      return package.status == PackageStatus.inactive ||
+          package.status == PackageStatus.expired ||
+          package.status == PackageStatus.archived;
+    }).toList();
 
-  List<DataPackage> _getExpiredPackages(List<DataPackage> packages) {
-    final expiredPackages = packages.where(_isExpired).toList();
-
-    expiredPackages.sort((a, b) {
+    historyPackages.sort((a, b) {
       final dateComparison = b.endDate.compareTo(a.endDate);
 
       if (dateComparison != 0) {
@@ -74,7 +74,7 @@ class _HistoryPageState extends State<HistoryPage> {
       return b.createdAt.compareTo(a.createdAt);
     });
 
-    return expiredPackages;
+    return historyPackages;
   }
 
   String _formatDate(DateTime date) {
@@ -113,6 +113,49 @@ class _HistoryPageState extends State<HistoryPage> {
         : size.toStringAsFixed(1);
 
     return '$formattedSize ${units[unitIndex]}';
+  }
+
+  String _getStatusLabel(PackageStatus status) {
+    switch (status) {
+      case PackageStatus.inactive:
+        return 'Belum Aktif';
+      case PackageStatus.expired:
+        return 'Kedaluwarsa';
+      case PackageStatus.archived:
+        return 'Diarsipkan';
+      case PackageStatus.active:
+        return 'Aktif';
+    }
+  }
+
+  Color _getStatusColor(PackageStatus status) {
+    switch (status) {
+      case PackageStatus.inactive:
+        return const Color(0xFF287DBA);
+      case PackageStatus.expired:
+        return const Color(0xFFCC5555);
+      case PackageStatus.archived:
+        return const Color(0xFF8494A5);
+      case PackageStatus.active:
+        return const Color(0xFF388E68);
+    }
+  }
+
+  Color _getStatusBackground(PackageStatus status) {
+    switch (status) {
+      case PackageStatus.inactive:
+        return const Color(0xFFEAF4FC);
+      case PackageStatus.expired:
+        return const Color(0xFFFFEEEE);
+      case PackageStatus.archived:
+        return const Color(0xFFF0F2F5);
+      case PackageStatus.active:
+        return const Color(0xFFEAF6EF);
+    }
+  }
+
+  Future<void> _refreshHistory(String uid) async {
+    await context.read<PackageProvider>().load(uid);
   }
 
   @override
@@ -166,7 +209,7 @@ class _HistoryPageState extends State<HistoryPage> {
                   _hasLoadedCurrentUser = false;
                 });
 
-                await context.read<PackageProvider>().load(uid);
+                await _refreshHistory(uid);
 
                 if (!mounted) return;
 
@@ -181,42 +224,48 @@ class _HistoryPageState extends State<HistoryPage> {
       );
     }
 
-    final expiredPackages = _getExpiredPackages(packageProvider.packages);
+    final historyPackages = _getHistoryPackages(packageProvider.packages);
 
     return ColoredBox(
       color: _backgroundColor,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-        children: [
-          const Text(
-            'Riwayat Paket',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.bold,
-              color: _titleColor,
-            ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Daftar paket yang telah kedaluwarsa.',
-            style: TextStyle(fontSize: 14, color: _mutedColor),
-          ),
-          const SizedBox(height: 28),
-          if (expiredPackages.isEmpty)
-            _buildEmptyState()
-          else ...[
-            Text(
-              '${expiredPackages.length} paket kedaluwarsa',
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+      child: RefreshIndicator(
+        color: _primaryColor,
+        onRefresh: () => _refreshHistory(uid),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+          children: [
+            const Text(
+              'Riwayat Paket',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
                 color: _titleColor,
               ),
             ),
-            const SizedBox(height: 16),
-            ...expiredPackages.map((package) => _buildPackageCard(package)),
+            const SizedBox(height: 6),
+            const Text(
+              'Daftar paket terdahulu beserta informasi masa berlakunya.',
+              style: TextStyle(fontSize: 14, color: _mutedColor),
+            ),
+            const SizedBox(height: 28),
+
+            if (historyPackages.isEmpty)
+              _buildEmptyState()
+            else ...[
+              Text(
+                '${historyPackages.length} paket tersimpan',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: _titleColor,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ...historyPackages.map(_buildPackageCard),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -259,7 +308,7 @@ class _HistoryPageState extends State<HistoryPage> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Paket yang sudah kedaluwarsa akan muncul di sini.',
+            'Paket yang sudah tidak aktif, kedaluwarsa, atau diarsipkan akan muncul di sini.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 13, color: _mutedColor),
           ),
@@ -269,82 +318,93 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   Widget _buildPackageCard(DataPackage package) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _borderColor, width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Text(
-                  package.packageName,
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => HistoryDetailPage(package: package),
+          ),
+        );
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _borderColor, width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    package.packageName,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: _titleColor,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  _formatBytes(package.advertisedTotalQuotaBytes),
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: _titleColor,
+                    color: _primaryColor,
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                _formatBytes(package.advertisedTotalQuotaBytes),
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: _primaryColor,
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              package.operatorName ?? '-',
+              style: const TextStyle(fontSize: 14, color: _mutedColor),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Icon(
+                  Icons.calendar_today_rounded,
+                  size: 14,
+                  color: _mutedColor,
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            package.operatorName ?? '-',
-            style: const TextStyle(fontSize: 14, color: _mutedColor),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              const Icon(
-                Icons.calendar_today_rounded,
-                size: 14,
-                color: _mutedColor,
-              ),
-              const SizedBox(width: 7),
-              Expanded(
-                child: Text(
-                  'Berakhir ${_formatDate(package.endDate)}',
-                  style: const TextStyle(fontSize: 12, color: _mutedColor),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFEEEE),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  'Kedaluwarsa',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFFCC5555),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    'Berakhir ${_formatDate(package.endDate)}',
+                    style: const TextStyle(fontSize: 12, color: _mutedColor),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ],
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _getStatusBackground(package.status),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    _getStatusLabel(package.status),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: _getStatusColor(package.status),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
