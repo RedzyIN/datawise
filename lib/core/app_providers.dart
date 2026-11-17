@@ -63,7 +63,7 @@ List<SingleChildWidget> buildAppProviders() {
 
     // --- Provider ---
     ChangeNotifierProvider<AuthProvider>(
-      create: (_) => AuthProvider(authService),
+      create: (_) => AuthProvider(authService, userRepo),
     ),
 
     ChangeNotifierProvider<PackageProvider>(
