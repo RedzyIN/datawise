@@ -58,16 +58,7 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   bool _isExpired(DataPackage package) {
-    final now = DateTime.now();
-
-    final today = DateTime(now.year, now.month, now.day);
-    final endDate = DateTime(
-      package.endDate.year,
-      package.endDate.month,
-      package.endDate.day,
-    );
-
-    return endDate.isBefore(today);
+    return !package.isArchived && package.isExpiredAt();
   }
 
   List<DataPackage> _getExpiredPackages(List<DataPackage> packages) {
@@ -294,7 +285,7 @@ class _HistoryPageState extends State<HistoryPage> {
             children: [
               Expanded(
                 child: Text(
-                  package.name,
+                  package.packageName,
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -304,7 +295,7 @@ class _HistoryPageState extends State<HistoryPage> {
               ),
               const SizedBox(width: 12),
               Text(
-                _formatBytes(package.totalBytes),
+                _formatBytes(package.advertisedTotalQuotaBytes),
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -315,7 +306,7 @@ class _HistoryPageState extends State<HistoryPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            package.operator,
+            package.operatorName ?? '-',
             style: const TextStyle(fontSize: 14, color: _mutedColor),
           ),
           const SizedBox(height: 16),
