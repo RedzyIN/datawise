@@ -38,7 +38,7 @@ class DashboardProvider extends ChangeNotifier {
           : records.fold<int>(package!.initialUsedBytes,
               (sum, record) => sum + record.usedBytes));
   int get remainingBytes =>
-      package == null ? 0 : (package!.totalBytes - totalUsedBytes).clamp(0, package!.totalBytes);
+      package == null ? 0 : (package!.totalBytes - totalUsedBytes).clamp(0, package!.totalBytes).toInt();
   int get todayUsedBytes {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
