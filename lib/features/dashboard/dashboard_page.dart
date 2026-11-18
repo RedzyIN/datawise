@@ -103,6 +103,8 @@ class _DashView {
     required this.packageForNav,
     this.categories = const [],
     this.overQuota = false,
+    this.planUnavailable = false,
+    this.categoriesComplete = false,
   });
 
   final String userName, operatorName, packageTitle;
@@ -121,6 +123,8 @@ class _DashView {
   final DataPackage packageForNav;
   final List<_Cat> categories;
   final bool overQuota;
+  final bool planUnavailable;
+  final bool categoriesComplete;
 
   /// Data contoh pekan 1 — sama dengan frame Figma.
   factory _DashView.mock() {
@@ -162,6 +166,7 @@ class _DashView {
         _Cat('Kuota Malam', 1200000000, 6 * kBytesPerGB),
         _Cat('Kuota Sosial', 1500000000, 4 * kBytesPerGB),
       ],
+      categoriesComplete: true,
       packageForNav: DataPackage(
         id: 'preview-package',
         userId: 'preview-user',
@@ -259,9 +264,12 @@ class _DashView {
       targetText: dailyTarget != null ? _gb(dailyTarget) : '—',
       averageText: _gb(weekUsed / 7),
       tooltip: _gb(days.last.bytes),
-      // TODO(D): ganti dengan satu baris per kategori setelah QuotaCategory &
-      // QuotaCategoryRepository ada di kode (KONTRAK_DATA_V1 bagian 4 & 5).
+      // Provider saat ini hanya mengekspos paket dan total penggunaan.
+      // UI tidak mengambil QuotaCategory/Allocation langsung karena kontrak Provider
+      // tidak boleh diubah dan UI tidak boleh mengakses Repository/Service.
       categories: [_Cat('Kuota Utama', used, total)],
+      categoriesComplete: false,
+      planUnavailable: d.planUnavailable,
       packageForNav: pkg,
       overQuota: plan != null && plan.usedBytes > plan.totalBytes,
     );
@@ -382,6 +390,20 @@ class _DashboardPageState extends State<DashboardPage>
               arguments: v.packageForNav.id,
             ),
           ),
+          if (!preview && !d.hasPermission) ...[
+            SizedBox(height: _u(8)),
+            _PermissionNotice(
+              onGrant: () async {
+                await d.openUsageAccessSettings();
+                await d.recheckPermission();
+                if (mounted) await _load();
+              },
+            ),
+          ],
+          if (!preview && v.planUnavailable) ...[
+            SizedBox(height: _u(8)),
+            const _PlannerNotice(),
+          ],
           SizedBox(height: _u(9)),
           _DailyWeekly(v: v),
           SizedBox(height: _u(9)),
@@ -464,6 +486,16 @@ class _DashboardPageState extends State<DashboardPage>
             onBell: () => _showNotifications(context),
             onStatus: () => _showStatus(context, d, false),
           ),
+          if (!d.hasPermission) ...[
+            SizedBox(height: _u(8)),
+            _PermissionNotice(
+              onGrant: () async {
+                await d.openUsageAccessSettings();
+                await d.recheckPermission();
+                if (mounted) await _load();
+              },
+            ),
+          ],
           SizedBox(height: _u(16)),
           Container(
             padding: EdgeInsets.all(_u(20)),
@@ -1361,10 +1393,68 @@ class _CategoryCard extends StatelessWidget {
             ),
             SizedBox(height: _u(8)),
           ],
+          if (!v.categoriesComplete)
+            Padding(
+              padding: EdgeInsets.only(top: _u(2)),
+              child: Text(
+                'Rincian kategori tambahan belum tersedia dari data Dashboard saat ini.',
+                style: TextStyle(color: _muted, fontSize: _u(7.5)),
+              ),
+            ),
         ],
       ),
     );
   }
+}
+
+class _PermissionNotice extends StatelessWidget {
+  const _PermissionNotice({required this.onGrant});
+
+  final VoidCallback onGrant;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: EdgeInsets.all(_u(10)),
+    decoration: BoxDecoration(
+      color: const Color(0xFFFFF5E8),
+      borderRadius: BorderRadius.circular(_u(10)),
+      border: Border.all(color: const Color(0xFFF4D7AD)),
+    ),
+    child: Row(
+      children: [
+        Icon(Icons.lock_outline, color: Colors.orange.shade800, size: _u(16)),
+        SizedBox(width: _u(7)),
+        Expanded(
+          child: Text(
+            'Izin akses penggunaan belum diberikan. Data otomatis belum dapat dibaca.',
+            style: TextStyle(color: _ink, fontSize: _u(8)),
+          ),
+        ),
+        TextButton(
+          onPressed: onGrant,
+          child: Text('Beri izin', style: TextStyle(fontSize: _u(8))),
+        ),
+      ],
+    ),
+  );
+}
+
+class _PlannerNotice extends StatelessWidget {
+  const _PlannerNotice();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: EdgeInsets.all(_u(9)),
+    decoration: BoxDecoration(
+      color: _mint,
+      borderRadius: BorderRadius.circular(_u(9)),
+    ),
+    child: Text(
+      'Target harian dan mingguan belum tersedia. Ringkasan pemakaian dan grafik tetap ditampilkan.',
+      style: TextStyle(color: _muted, fontSize: _u(8)),
+    ),
+  );
 }
 
 class _DashedLine extends CustomPainter {
