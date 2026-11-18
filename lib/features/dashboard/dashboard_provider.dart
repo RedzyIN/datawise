@@ -1,114 +1,245 @@
-// PEMILIK: Anggota D. Menggabungkan paket + pemakaian + planner + alert.
-import 'package:flutter/foundation.dart';
+  // PEMILIK: Anggota D. Menggabungkan paket + pemakaian + planner + alert.
+  import 'package:flutter/foundation.dart';
 
-import '../../models/models.dart';
-import '../../repositories/repositories.dart';
-import '../../services/alert_service.dart';
-import '../../services/planner_service.dart';
-import '../../services/usage_service.dart';
+  import '../../models/models.dart';
+  import '../../repositories/repositories.dart';
+  import '../../services/alert_service.dart';
+  import '../../services/planner_service.dart';
+  import '../../services/usage_service.dart';
 
-enum DashboardLoad { loading, ready, noPackage, error }
+  enum DashboardLoad { loading, ready, noPackage, error }
 
-class DashboardProvider extends ChangeNotifier {
-  DashboardProvider(
-    this._packageRepo,
-    this._usageRepo,
-    this._usageService,
-    this._alertService,
-  );
+  class DashboardProvider extends ChangeNotifier {
+    DashboardProvider(
+      this._packageRepo,
+      this._usageRepo,
+      this._usageService,
+      this._alertService,
+    );
 
-  final PackageRepository _packageRepo;
-  final UsageRepository _usageRepo;
-  final UsageService _usageService;
-  final AlertService _alertService;
+    final PackageRepository _packageRepo;
+    final UsageRepository _usageRepo;
+    final UsageService _usageService;
+    final AlertService _alertService;
 
-  DashboardLoad loadState = DashboardLoad.loading;
-  DataPackage? package;
-  PlannerResult? plan;
-  List<UsageRecord> records = const [];
-  Map<DateTime, int> dailyUsage = const {};
-  bool hasUsagePermission = false;
-  bool isRefreshing = false;
-  DateTime? lastUpdatedAt;
-  String? errorMessage;
+    DashboardLoad loadState = DashboardLoad.loading;
+    DataPackage? package;
+    PlannerResult? plan;
+    List<UsageRecord> records = const [];
 
-  int get totalUsedBytes => plan?.usedBytes ??
-      (package == null
-          ? 0
-          : records.fold<int>(package!.initialUsedBytes,
-              (sum, record) => sum + record.usedBytes));
-  int get remainingBytes =>
-      package == null ? 0 : (package!.totalBytes - totalUsedBytes).clamp(0, package!.totalBytes).toInt();
-  int get todayUsedBytes {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    return dailyUsage[today] ?? 0;
-  }
+    Map<DateTime, int> dailyUsage = const {};
+    String? errorMessage;
 
-  Future<void> refresh(String userId) async {
-    if (isRefreshing) return;
-    isRefreshing = true;
-    errorMessage = null;
-    if (loadState != DashboardLoad.ready) loadState = DashboardLoad.loading;
-    notifyListeners();
+    int totalUsedBytes = 0;
+    bool hasPermission = false;
+    UsageReading? lastReading;
+    DateTime? lastUpdatedAt;
+    bool planUnavailable = false;
 
-    try {
-      final activePackage = await _packageRepo.getActive(userId);
-      package = activePackage;
-      if (activePackage == null) {
-        plan = null;
-        records = const [];
-        dailyUsage = const {};
-        hasUsagePermission = await _usageService.hasPermission();
-        loadState = DashboardLoad.noPackage;
-        lastUpdatedAt = DateTime.now();
-        return;
+    int _generation = 0;
+    bool _notifPermissionAsked = false;
+    bool _disposed = false;
+
+    /// Memilih satu sumber penggunaan efektif untuk setiap tanggal.
+    ///
+    /// Prioritas:
+    /// 1. MANUAL_TOTAL jika tersedia.
+    /// 2. DEVICE_TOTAL jika tersedia.
+    /// 3. APP_USAGE jika DEVICE_TOTAL tidak tersedia.
+    ///
+    /// DEVICE_TOTAL dan APP_USAGE tidak pernah dijumlahkan bersamaan.
+    Map<DateTime, int> _buildDailyUsage(List<UsageRecord> sourceRecords) {
+      final grouped = <DateTime, List<UsageRecord>>{};
+
+      for (final record in sourceRecords) {
+        if (record.networkType == NetworkType.wifi) continue;
+
+        final day = dateOnly(record.periodStartAt);
+        grouped.putIfAbsent(day, () => []).add(record);
       }
 
-      hasUsagePermission = await _usageService.hasPermission();
-      // Service tidak melempar error; status permission/unsupported ditangani di UI.
-      await _usageService.refreshToday(activePackage);
+      final result = <DateTime, int>{};
 
-      final id = activePackage.id;
-      if (id == null) {
-        throw const AppException(
-          AppException.validation,
-          'ID paket aktif belum tersedia.',
+      for (final entry in grouped.entries) {
+        final dayRecords = entry.value;
+
+        final manualRecords = dayRecords.where(
+          (record) =>
+              record.source == UsageSource.manual &&
+              record.recordScope == UsageRecordScope.manualTotal,
         );
+
+        final deviceRecords = dayRecords.where(
+          (record) =>
+              record.source == UsageSource.android &&
+              record.recordScope == UsageRecordScope.deviceTotal,
+        );
+
+        final appRecords = dayRecords.where(
+          (record) =>
+              record.source == UsageSource.android &&
+              record.recordScope == UsageRecordScope.appUsage,
+        );
+
+        final Iterable<UsageRecord> selectedRecords;
+
+        if (manualRecords.isNotEmpty) {
+          selectedRecords = manualRecords;
+        } else if (deviceRecords.isNotEmpty) {
+          selectedRecords = deviceRecords;
+        } else {
+          selectedRecords = appRecords;
+        }
+
+        final total = selectedRecords.fold<int>(
+          0,
+          (sum, record) => sum + record.totalBytes,
+        );
+
+        result[entry.key] = total;
       }
 
-      final results = await Future.wait<Object>([
-        _usageRepo.getTotalUsedBytes(id),
-        _usageRepo.getUsedBytesOn(id, DateTime.now()),
-        _usageRepo.getRecords(id),
-        _usageRepo.getDailyUsage(id),
-      ]);
-      final totalUsed = results[0] as int;
-      final todayUsed = results[1] as int;
-      records = results[2] as List<UsageRecord>;
-      dailyUsage = results[3] as Map<DateTime, int>;
+      return result;
+    }
+
+    Future<void> refresh(String userId) async {
+      final gen = ++_generation;
+
+      if (package == null) {
+        loadState = DashboardLoad.loading;
+        _notify();
+      }
 
       try {
-        plan = PlannerService.calculate(
-          package: activePackage,
-          totalUsedBytes: totalUsed,
-          todayUsedBytes: todayUsed,
-          today: DateTime.now(),
-        );
-        await _alertService.evaluateAndNotify(activePackage, plan!);
-      } on UnimplementedError {
-        // Planner dan alert masih dikerjakan anggota pemiliknya.
-        plan = null;
-      }
+        final active = await _packageRepo.getActive(userId);
+        if (gen != _generation) return;
 
-      lastUpdatedAt = DateTime.now();
-      loadState = DashboardLoad.ready;
-    } catch (e) {
-      errorMessage = e is AppException ? e.message : 'Gagal memuat Dashboard: $e';
-      loadState = DashboardLoad.error;
-    } finally {
-      isRefreshing = false;
-      notifyListeners();
+        if (active == null || active.id == null) {
+          package = null;
+          plan = null;
+          records = const [];
+          dailyUsage = const {};
+          totalUsedBytes = 0;
+          planUnavailable = false;
+          errorMessage = null;
+
+          hasPermission = await _usageService.hasPermission();
+
+          loadState = DashboardLoad.noPackage;
+          _notify();
+          return;
+        }
+
+        final packageId = active.id!;
+
+        if (!_notifPermissionAsked) {
+          _notifPermissionAsked = true;
+
+          try {
+            await _alertService.requestPermission();
+          } catch (_) {}
+        }
+
+        hasPermission = await _usageService.hasPermission();
+
+        if (hasPermission) {
+          final reading = await _usageService.refreshToday(active);
+          lastReading = reading;
+
+          if (reading.status == UsageReadStatus.ok) {
+            lastUpdatedAt = DateTime.now();
+          }
+        } else {
+          lastReading = null;
+        }
+
+        if (gen != _generation) return;
+
+        final today = dateOnly(DateTime.now());
+
+        final loadedRecords = await _usageRepo.getRecords(packageId);
+
+        if (gen != _generation) return;
+
+        final loadedDaily = _buildDailyUsage(loadedRecords);
+
+        final totalUsed = loadedDaily.values.fold<int>(
+          0,
+          (sum, bytes) => sum + bytes,
+        );
+
+        final todayUsed = loadedDaily[today] ?? 0;
+
+        PlannerResult? result;
+        var unavailable = false;
+
+        try {
+          result = PlannerService.calculate(
+            package: active,
+            totalUsedBytes: totalUsed,
+            todayUsedBytes: todayUsed,
+            today: today,
+          );
+        } on UnimplementedError {
+          unavailable = true;
+        } catch (_) {
+          unavailable = true;
+        }
+
+        if (result != null) {
+          try {
+            await _alertService.evaluateAndNotify(userId, active, result);
+          } catch (_) {
+            // Kegagalan notifikasi tidak boleh merusak Dashboard.
+          }
+        }
+
+        if (gen != _generation) return;
+
+        package = active;
+        records = loadedRecords;
+        dailyUsage = loadedDaily;
+        totalUsedBytes = totalUsed;
+        plan = result;
+        planUnavailable = unavailable;
+        errorMessage = null;
+        loadState = DashboardLoad.ready;
+
+        _notify();
+      } on AppException catch (e) {
+        if (gen != _generation) return;
+
+        errorMessage = e.message;
+        loadState = DashboardLoad.error;
+        _notify();
+      } catch (_) {
+        if (gen != _generation) return;
+
+        errorMessage = 'Terjadi kesalahan saat memuat Dashboard.';
+        loadState = DashboardLoad.error;
+        _notify();
+      }
+    }
+
+    Future<void> recheckPermission() async {
+      final granted = await _usageService.hasPermission();
+
+      if (granted != hasPermission) {
+        hasPermission = granted;
+        _notify();
+      }
+    }
+
+    Future<void> openUsageAccessSettings() =>
+        _usageService.openUsageAccessSettings();
+
+    void _notify() {
+      if (!_disposed) notifyListeners();
+    }
+
+    @override
+    void dispose() {
+      _disposed = true;
+      super.dispose();
     }
   }
-}

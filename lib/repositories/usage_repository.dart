@@ -1,12 +1,37 @@
-// MILIK ARSITEK. KONTRAK BEKU #4.
 import '../models/models.dart';
 
 abstract class UsageRepository {
-  Future<void> upsertRecord(
-      int packageId, DateTime date, int usedBytes, UsageSource source);
-  Future<void> deleteManual(int packageId, DateTime date);
-  Future<List<UsageRecord>> getRecords(int packageId);
-  Future<int> getUsedBytesOn(int packageId, DateTime date); // pemakaian efektif hari itu
-  Future<int> getTotalUsedBytes(int packageId); // sudah termasuk initial_used_bytes
-  Future<Map<DateTime, int>> getDailyUsage(int packageId); // untuk grafik
+  /// Saves unallocated source records such as DEVICE_TOTAL and Wi-Fi readings.
+  /// Chargeable APP_USAGE and MANUAL_TOTAL records use the atomic method.
+  Future<String> upsertRecord(UsageRecord record);
+
+  /// Saves or updates a chargeable source record and all allocations
+  /// in one transaction.
+  Future<String> upsertRecordWithAllocations(
+    UsageRecord record,
+    List<UsageAllocation> Function(String usageRecordId) allocationBuilder,
+  );
+
+  Future<void> deleteManualRecords(
+    String packageId,
+    DateTime periodStartAt,
+    DateTime periodEndAt,
+  );
+
+  Future<UsageRecord?> getById(String recordId);
+  Future<List<UsageRecord>> getRecords(String packageId);
+  Future<List<UsageRecord>> getRecordsForPeriod(
+    String packageId,
+    DateTime startAt,
+    DateTime endAt,
+  );
+
+  /// Replaces allocations on an existing record. Their sum must equal RX + TX.
+  Future<void> replaceAllocations(
+    String usageRecordId,
+    List<UsageAllocation> allocations,
+  );
+
+  Future<List<UsageAllocation>> getAllocations(String usageRecordId);
+  Future<List<UsageAllocation>> getAllocationsByPackage(String packageId);
 }

@@ -12,17 +12,15 @@ class AuthGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AuthProvider>(
-      builder: (context, auth, _) {
-        switch (auth.status) {
-          case AuthStatus.unknown:
-            return const Scaffold(body: Center(child: CircularProgressIndicator()));
-          case AuthStatus.authenticated:
-            return const HomeShell();
-          case AuthStatus.unauthenticated:
-            return const LoginPage();
-        }
-      },
-    );
+    // select: hanya dibangun ulang saat status berubah.
+    final status = context.select((AuthProvider auth) => auth.status);
+
+    return switch (status) {
+      AuthStatus.unknown => const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      ),
+      AuthStatus.authenticated => const HomeShell(),
+      AuthStatus.unauthenticated => const LoginPage(),
+    };
   }
 }
