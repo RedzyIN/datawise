@@ -157,11 +157,6 @@ class _DashView {
       targetText: '1,53 GB',
       averageText: '1,12 GB',
       tooltip: '1,53 GB',
-      categories: const [
-        _Cat('Kuota Utama', 8900000000, 20 * kBytesPerGB),
-        _Cat('Kuota Malam', 1200000000, 6 * kBytesPerGB),
-        _Cat('Kuota Sosial', 1500000000, 4 * kBytesPerGB),
-      ],
       packageForNav: DataPackage(
         id: 'preview-package',
         userId: 'preview-user',
