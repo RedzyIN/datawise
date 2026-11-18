@@ -1,26 +1,19 @@
-// PEMILIK: Anggota D (Nero). KONTRAK BEKU #4 & #6.
-// Aturan pemicu (dokumen Arsitek / KONFLIK_ANTAR_DOKUMEN):
-//  - daily80   : pemakaian hari ini 80% s.d. <100% dari target harian
-//  - daily100  : 100% s.d. 100,5%
-//  - dailyOver : > 100,5%
-//  - quota10   : sisa kuota <= 10% dari total; alert_date = end_date paket
-//  - expiring1d: hari ini = end_date - 1 hari
-// Satu hari hanya mengirim SATU peringatan harian (tingkat tertinggi). Setiap peringatan
-// punya kunci dedupe (paket, jenis, tanggal) lewat AlertRepository. Hanya notifikasi;
-// aplikasi tidak memutus koneksi data.
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-import '../core/constants.dart';
 import '../models/models.dart';
 import '../repositories/repositories.dart';
 
 abstract class AlertService {
   Future<void> init();
   Future<bool> requestPermission();
-  Future<void> evaluateAndNotify(DataPackage package, PlannerResult result);
+
+  Future<void> evaluateAndNotify(
+    String userId,
+    DataPackage package,
+    PlannerResult result,
+  );
 }
 
-/// Pemisah antara aturan peringatan dan plugin notifikasi (agar mudah diuji).
 abstract class NotificationSink {
   Future<void> init();
   Future<bool> requestPermission();
@@ -28,7 +21,8 @@ abstract class NotificationSink {
 }
 
 class LocalNotificationSink implements NotificationSink {
-  final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
 
   static const _channelId = 'datawise_alerts';
   static const _channelName = 'Peringatan kuota';
@@ -40,37 +34,48 @@ class LocalNotificationSink implements NotificationSink {
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       ),
     );
+
     await _plugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(const AndroidNotificationChannel(
-          _channelId,
-          _channelName,
-          description: 'Peringatan target harian, sisa kuota, dan masa aktif paket',
-          importance: Importance.high,
-        ));
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.createNotificationChannel(
+          const AndroidNotificationChannel(
+            _channelId,
+            _channelName,
+            description:
+                'Peringatan target harian, sisa kuota, dan masa aktif paket',
+            importance: Importance.high,
+          ),
+        );
   }
 
   @override
   Future<bool> requestPermission() async {
     final android = _plugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+
     return await android?.requestNotificationsPermission() ?? false;
   }
 
   @override
-  Future<void> show(int id, String title, String body) => _plugin.show(
-        id: id,
-        title: title,
-        body: body,
-        notificationDetails: const NotificationDetails(
-          android: AndroidNotificationDetails(
-            _channelId,
-            _channelName,
-            importance: Importance.high,
-            priority: Priority.high,
-          ),
+  Future<void> show(int id, String title, String body) {
+    return _plugin.show(
+      id: id,
+      title: title,
+      body: body,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channelId,
+          _channelName,
+          importance: Importance.high,
+          priority: Priority.high,
         ),
-      );
+      ),
+    );
+  }
 }
 
 class AlertServiceImpl implements AlertService {
@@ -79,8 +84,8 @@ class AlertServiceImpl implements AlertService {
     this._settingsRepo, {
     NotificationSink? sink,
     DateTime Function()? now,
-  })  : _sink = sink ?? LocalNotificationSink(),
-        _now = now ?? DateTime.now;
+  }) : _sink = sink ?? LocalNotificationSink(),
+       _now = now ?? DateTime.now;
 
   final AlertRepository _alertRepo;
   final SettingsRepository _settingsRepo;
@@ -98,82 +103,143 @@ class AlertServiceImpl implements AlertService {
     return _sink.requestPermission();
   }
 
-  Future<bool> _enabled() async {
-    // Default aktif; hanya '0' yang mematikan.
-    return await _settingsRepo.get(AppConstants.keyNotifEnabled) != '0';
+  Future<bool> _enabled(String userId) async {
+    final setting = await _settingsRepo.getByUserId(userId);
+
+    // Jika belum ada pengaturan, notifikasi aktif secara default.
+    return setting?.notificationsEnabled ?? true;
+  }
+
+  String _dedupeKey(String packageId, AlertType type, DateTime date) {
+    final day = dateOnly(date).toIso8601String().split('T').first;
+
+    return '$packageId:${type.name}:$day';
+  }
+
+  int _notificationId(String packageId, AlertType type, DateTime date) {
+    return Object.hash(packageId, type.index, date.year, date.month, date.day) &
+        0x7fffffff;
   }
 
   @override
-  Future<void> evaluateAndNotify(DataPackage package, PlannerResult result) async {
+  Future<void> evaluateAndNotify(
+    String userId,
+    DataPackage package,
+    PlannerResult result,
+  ) async {
     final packageId = package.id;
-    if (packageId == null) return;
-    if (!await _enabled()) return;
+
+    if (packageId == null || packageId.isEmpty) return;
+    if (!await _enabled(userId)) return;
+
     if (result.status == PlannerStatus.expired ||
         result.status == PlannerStatus.notStarted) {
       return;
     }
 
     final today = dateOnly(_now());
-    final candidates = <(AlertType, DateTime, String, String)>[];
 
-    // Peringatan harian: hanya tingkat tertinggi.
+    final candidates =
+        <
+          ({
+            AlertType type,
+            DateTime date,
+            String title,
+            String body,
+            int? observedBytes,
+            int? thresholdBytes,
+          })
+        >[];
+
     final pct = result.todayPercentOfTarget;
+
     if (pct != null) {
       if (pct > 100.5) {
         candidates.add((
-          AlertType.dailyOver,
-          today,
-          'Target harian terlampaui',
-          'Pemakaian hari ini melewati target harian ${package.name}.'
+          type: AlertType.dailyOver,
+          date: today,
+          title: 'Target harian terlampaui',
+          body:
+              'Pemakaian hari ini melewati target harian ${package.packageName}.',
+          observedBytes: result.todayUsedBytes,
+          thresholdBytes: result.dailyTargetBytes?.round(),
         ));
       } else if (pct >= 100) {
         candidates.add((
-          AlertType.daily100,
-          today,
-          'Target harian tercapai',
-          'Pemakaian hari ini sudah mencapai target harian ${package.name}.'
+          type: AlertType.daily100,
+          date: today,
+          title: 'Target harian tercapai',
+          body:
+              'Pemakaian hari ini sudah mencapai target harian ${package.packageName}.',
+          observedBytes: result.todayUsedBytes,
+          thresholdBytes: result.dailyTargetBytes?.round(),
         ));
       } else if (pct >= 80) {
         candidates.add((
-          AlertType.daily80,
-          today,
-          'Mendekati target harian',
-          'Pemakaian hari ini sudah 80% dari target harian ${package.name}.'
+          type: AlertType.daily80,
+          date: today,
+          title: 'Mendekati target harian',
+          body:
+              'Pemakaian hari ini sudah 80% dari target harian ${package.packageName}.',
+          observedBytes: result.todayUsedBytes,
+          thresholdBytes: result.dailyTargetBytes?.round(),
         ));
       }
     }
 
-    // Sisa kuota <= 10% (integer math agar tidak ada galat desimal).
-    if (result.totalBytes > 0 && result.remainingBytes * 100 <= result.totalBytes * 10) {
+    if (result.totalBytes > 0 &&
+        result.remainingBytes * 100 <= result.totalBytes * 10) {
       candidates.add((
-        AlertType.quota10,
-        dateOnly(package.endDate),
-        'Sisa kuota menipis',
-        'Sisa kuota ${package.name} tinggal 10% atau kurang.'
+        type: AlertType.quota10,
+        date: dateOnly(package.endDate),
+        title: 'Sisa kuota menipis',
+        body: 'Sisa kuota ${package.packageName} tinggal 10% atau kurang.',
+        observedBytes: result.remainingBytes,
+        thresholdBytes: (result.totalBytes * 0.1).round(),
       ));
     }
 
-    // Paket berakhir besok.
     if (today == dateOnly(package.endDate).subtract(const Duration(days: 1))) {
       candidates.add((
-        AlertType.expiring1d,
-        today,
-        'Paket berakhir besok',
-        '${package.name} akan berakhir besok.'
+        type: AlertType.expiring1d,
+        date: today,
+        title: 'Paket berakhir besok',
+        body: '${package.packageName} akan berakhir besok.',
+        observedBytes: null,
+        thresholdBytes: null,
       ));
     }
 
     if (candidates.isEmpty) return;
+
     await init();
 
-    for (final c in candidates) {
-      final (type, date, title, body) = c;
-      if (await _alertRepo.hasBeenSent(packageId, type, date)) continue;
+    for (final candidate in candidates) {
+      final key = _dedupeKey(packageId, candidate.type, candidate.date);
+
+      if (await _alertRepo.existsByDedupeKey(key)) continue;
+
       try {
-        await _sink.show(packageId * 10 + type.index, title, body);
-        await _alertRepo.markSent(packageId, type, date);
+        await _sink.show(
+          _notificationId(packageId, candidate.type, candidate.date),
+          candidate.title,
+          candidate.body,
+        );
+
+        await _alertRepo.add(
+          AlertLog(
+            packageId: packageId,
+            alertType: alertTypeToDb(candidate.type),
+            message: candidate.body,
+            observedBytes: candidate.observedBytes,
+            thresholdBytes: candidate.thresholdBytes,
+            dedupeKey: key,
+            triggeredAt: _now(),
+            isRead: false,
+          ),
+        );
       } catch (_) {
-        // Gagal menampilkan notifikasi: jangan tandai terkirim agar dicoba lagi.
+        // Jika gagal, jangan membuat catatan dedupe.
       }
     }
   }

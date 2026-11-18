@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 
 class _FakeAuth extends ChangeNotifier implements AuthProvider {
   _FakeAuth(this._user);
+
   final AppUser? _user;
 
   @override
@@ -22,54 +23,108 @@ class _FakeAuth extends ChangeNotifier implements AuthProvider {
 
 class _Usage implements UsageService {
   _Usage(this.granted);
+
   final bool granted;
+
   @override
   Future<bool> hasPermission() async => granted;
+
   @override
   Future<void> openUsageAccessSettings() async {}
+
   @override
   Future<void> openInternetSettings() async {}
+
   @override
-  Future<UsageReading> readMobileUsage(DateTime s, DateTime e) async => _r();
+  Future<UsageReading> readMobileUsage(DateTime start, DateTime end) async {
+    return _reading();
+  }
+
   @override
-  Future<UsageReading> refreshToday(DataPackage package) async => _r();
-  UsageReading _r() => UsageReading(
+  Future<UsageReading> refreshToday(DataPackage package) async {
+    return _reading();
+  }
+
+  UsageReading _reading() {
+    final now = DateTime.now();
+
+    return UsageReading(
       status: UsageReadStatus.ok,
       totalBytes: 0,
-      start: DateTime.now(),
-      end: DateTime.now(),
-      message: null);
+      start: dateOnly(now),
+      end: now,
+      message: null,
+    );
+  }
 }
 
 class _Alert implements AlertService {
   @override
   Future<void> init() async {}
+
   @override
   Future<bool> requestPermission() async => false;
+
   @override
-  Future<void> evaluateAndNotify(DataPackage package, PlannerResult result) async {}
+  Future<void> evaluateAndNotify(
+    String userId,
+    DataPackage package,
+    PlannerResult result,
+  ) async {}
 }
 
-Widget _app(AuthProvider auth, DashboardProvider dash) => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<AuthProvider>.value(value: auth),
-        ChangeNotifierProvider<DashboardProvider>.value(value: dash),
-      ],
-      child: const MaterialApp(home: DashboardPage()),
-    );
+Widget _app(AuthProvider auth, DashboardProvider dashboard) {
+  return MultiProvider(
+    providers: [
+      ChangeNotifierProvider<AuthProvider>.value(value: auth),
+      ChangeNotifierProvider<DashboardProvider>.value(value: dashboard),
+    ],
+    child: const MaterialApp(home: DashboardPage()),
+  );
+}
+
+Future<void> _addDeviceUsage(
+  InMemoryUsageRepository repository,
+  String packageId,
+  DateTime date,
+  int bytes,
+) async {
+  final start = dateOnly(date);
+
+  await repository.upsertRecord(
+    UsageRecord(
+      packageId: packageId,
+      recordScope: UsageRecordScope.deviceTotal,
+      networkType: NetworkType.mobile,
+      periodStartAt: start,
+      periodEndAt: start.add(const Duration(days: 1)),
+      rxBytes: bytes,
+      txBytes: 0,
+      source: UsageSource.android,
+      recordedAt: start.add(const Duration(days: 1)),
+    ),
+  );
+}
 
 void main() {
   const user = AppUser(uid: 'u1', email: 'sarah@mail.com');
 
-  // Pekan 1: tanpa sesi login, Dashboard tetap tampil persis desain (data contoh).
-  testWidgets('tanpa login -> tampil data contoh sesuai desain Figma', (t) async {
-    await t.binding.setSurfaceSize(const Size(412, 1600));
-    addTearDown(() => t.binding.setSurfaceSize(null));
-    final pkgRepo = InMemoryPackageRepository();
-    final dash = DashboardProvider(
-        pkgRepo, InMemoryUsageRepository(pkgRepo), _Usage(false), _Alert());
-    await t.pumpWidget(_app(_FakeAuth(null) as AuthProvider, dash));
-    await t.pumpAndSettle();
+  testWidgets('tanpa login menampilkan Dashboard dengan data contoh', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(412, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final packageRepo = InMemoryPackageRepository();
+    final dashboard = DashboardProvider(
+      packageRepo,
+      InMemoryUsageRepository(packageRepo),
+      _Usage(false),
+      _Alert(),
+    );
+
+    await tester.pumpWidget(_app(_FakeAuth(null), dashboard));
+    await tester.pumpAndSettle();
 
     expect(find.text('Halo, Sarah!'), findsOneWidget);
     expect(find.text('18,40 GB'), findsOneWidget);
@@ -81,49 +136,75 @@ void main() {
     expect(find.text('Sisa per Kategori'), findsOneWidget);
     expect(find.text('Kuota Malam'), findsOneWidget);
     expect(find.text('Kuota Sosial'), findsOneWidget);
+
+    dashboard.dispose();
   });
 
-  testWidgets('tanpa paket aktif menampilkan ajakan tambah paket', (t) async {
-    await t.binding.setSurfaceSize(const Size(412, 1600));
-    addTearDown(() => t.binding.setSurfaceSize(null));
-    final pkgRepo = InMemoryPackageRepository();
-    final dash = DashboardProvider(
-        pkgRepo, InMemoryUsageRepository(pkgRepo), _Usage(false), _Alert());
-    await t.pumpWidget(_app(_FakeAuth(user) as AuthProvider, dash));
-    await t.pumpAndSettle();
+  testWidgets('tanpa paket aktif menampilkan ajakan tambah paket', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(412, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final packageRepo = InMemoryPackageRepository();
+    final dashboard = DashboardProvider(
+      packageRepo,
+      InMemoryUsageRepository(packageRepo),
+      _Usage(false),
+      _Alert(),
+    );
+
+    await tester.pumpWidget(_app(_FakeAuth(user), dashboard));
+    await tester.pumpAndSettle();
 
     expect(find.text('Halo, Sarah!'), findsOneWidget);
     expect(find.text('Belum ada paket aktif'), findsOneWidget);
+    expect(find.text('Tambah Paket'), findsOneWidget);
+
+    dashboard.dispose();
   });
 
-  testWidgets('paket nyata dari repository tampil di Beranda + status izin', (t) async {
-    await t.binding.setSurfaceSize(const Size(412, 1600));
-    addTearDown(() => t.binding.setSurfaceSize(null));
-    final pkgRepo = InMemoryPackageRepository();
-    final usageRepo = InMemoryUsageRepository(pkgRepo);
-    final now = DateTime.now();
-    final id = await pkgRepo.add(DataPackage(
-      userId: 'u1',
-      name: 'Paket Bulanan 30 GB',
-      operator: 'Telkomsel',
-      totalBytes: 30000000000,
-      initialUsedBytes: 0,
-      startDate: dateOnly(now.subtract(const Duration(days: 5))),
-      endDate: dateOnly(now.add(const Duration(days: 25))),
-      price: null,
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
-    ));
-    await usageRepo.upsertRecord(id, now, 900000000, UsageSource.auto);
+  testWidgets('paket nyata tampil di Dashboard bersama status izin', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(412, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    final dash = DashboardProvider(pkgRepo, usageRepo, _Usage(false), _Alert());
-    await t.pumpWidget(_app(_FakeAuth(user) as AuthProvider, dash));
-    await t.pumpAndSettle();
+    final packageRepo = InMemoryPackageRepository();
+    final usageRepo = InMemoryUsageRepository(packageRepo);
+
+    final now = DateTime.now();
+
+    final id = await packageRepo.add(
+      DataPackage(
+        userId: 'u1',
+        packageName: 'Paket Bulanan 30 GB',
+        operatorName: 'Telkomsel',
+        advertisedTotalQuotaBytes: 30000000000,
+        startDate: dateOnly(now.subtract(const Duration(days: 5))),
+        endDate: dateOnly(now.add(const Duration(days: 25))),
+        status: PackageStatus.active,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+
+    await _addDeviceUsage(usageRepo, id, now, 900000000);
+
+    final dashboard = DashboardProvider(
+      packageRepo,
+      usageRepo,
+      _Usage(false),
+      _Alert(),
+    );
+
+    await tester.pumpWidget(_app(_FakeAuth(user), dashboard));
+    await tester.pumpAndSettle();
 
     expect(find.textContaining('Paket Bulanan 30 GB'), findsOneWidget);
     expect(find.text('Izin belum diberikan'), findsOneWidget);
     expect(find.text('Masukkan Pemakaian'), findsOneWidget);
+
+    dashboard.dispose();
   });
 }
-
