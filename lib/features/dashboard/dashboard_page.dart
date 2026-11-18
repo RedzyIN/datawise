@@ -626,9 +626,11 @@ class _DashboardPageState extends State<DashboardPage>
         actions: [
           if (!preview && !granted)
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(context);
-                d.openUsageAccessSettings();
+                await d.openUsageAccessSettings();
+                await d.recheckPermission();
+                if (context.mounted) await _load();
               },
               child: const Text('Berikan izin'),
             ),
