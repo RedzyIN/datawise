@@ -630,7 +630,7 @@ class _DashboardPageState extends State<DashboardPage>
                 Navigator.pop(context);
                 await d.openUsageAccessSettings();
                 await d.recheckPermission();
-                if (context.mounted) await _load();
+                if (mounted) await _load();
               },
               child: const Text('Berikan izin'),
             ),
