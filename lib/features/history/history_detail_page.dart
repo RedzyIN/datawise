@@ -15,11 +15,11 @@ class HistoryDetailPage extends StatefulWidget {
 }
 
 class _HistoryDetailPageState extends State<HistoryDetailPage> {
-  static const Color _backgroundColor = Color(0xFFF4F7FC);
-  static const Color _primaryColor = Color(0xFF287DBA);
-  static const Color _titleColor = Color(0xFF20364A);
-  static const Color _mutedColor = Color(0xFF8494A5);
-  static const Color _borderColor = Color(0xFFE0E8F0);
+  static const Color _backgroundColor = Color(0xFFE4FBF7);
+  static const Color _primaryColor = Color(0xFF00796F);
+  static const Color _titleColor = Color(0xFF073B3A);
+  static const Color _mutedColor = Color(0xFF66817E);
+  static const Color _borderColor = Color(0xFFD7F0EC);
 
   late Future<_HistoryDetailData> _dataFuture;
 
@@ -168,7 +168,7 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
       case PackageStatus.expired:
         return const Color(0xFFCC5555);
       case PackageStatus.archived:
-        return const Color(0xFF8064A2);
+        return const Color(0xFF718096);
     }
   }
 
@@ -326,8 +326,8 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
             borderRadius: BorderRadius.circular(20),
             child: LinearProgressIndicator(
               value: progress,
-              minHeight: 9,
-              backgroundColor: const Color(0xFFE8EEF5),
+              minHeight: 8,
+              backgroundColor: const Color(0xFFD7F0EC),
               valueColor: const AlwaysStoppedAnimation<Color>(_primaryColor),
             ),
           ),
@@ -558,10 +558,10 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
 
   Widget _buildCard({required Widget child}) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: _borderColor),
       ),
       child: child,

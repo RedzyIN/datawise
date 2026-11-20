@@ -18,11 +18,11 @@ class _HistoryPageState extends State<HistoryPage> {
   String? _requestedUid;
   bool _hasLoadedCurrentUser = false;
 
-  static const Color _backgroundColor = Color(0xFFF4F7FC);
-  static const Color _primaryColor = Color(0xFF287DBA);
-  static const Color _titleColor = Color(0xFF20364A);
-  static const Color _mutedColor = Color(0xFF8494A5);
-  static const Color _borderColor = Color(0xFFE0E8F0);
+  static const Color _backgroundColor = Color(0xFFE4FBF7);
+  static const Color _primaryColor = Color(0xFF00796F);
+  static const Color _titleColor = Color(0xFF073B3A);
+  static const Color _mutedColor = Color(0xFF66817E);
+  static const Color _borderColor = Color(0xFFD7F0EC);
 
   @override
   void didChangeDependencies() {
@@ -131,26 +131,26 @@ class _HistoryPageState extends State<HistoryPage> {
   Color _getStatusColor(PackageStatus status) {
     switch (status) {
       case PackageStatus.inactive:
-        return const Color(0xFF287DBA);
+        return const Color(0xFF00796F);
       case PackageStatus.expired:
         return const Color(0xFFCC5555);
       case PackageStatus.archived:
-        return const Color(0xFF8494A5);
+        return const Color(0xFF849492);
       case PackageStatus.active:
-        return const Color(0xFF388E68);
+        return const Color(0xFF00695C);
     }
   }
 
   Color _getStatusBackground(PackageStatus status) {
     switch (status) {
       case PackageStatus.inactive:
-        return const Color(0xFFEAF4FC);
+        return const Color(0xFFE4FBF7);
       case PackageStatus.expired:
         return const Color(0xFFFFEEEE);
       case PackageStatus.archived:
-        return const Color(0xFFF0F2F5);
+        return const Color(0xFFF0F2F1);
       case PackageStatus.active:
-        return const Color(0xFFEAF6EF);
+        return const Color(0xFFD7F0EC);
     }
   }
 
@@ -261,7 +261,7 @@ class _HistoryPageState extends State<HistoryPage> {
                   color: _titleColor,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               ...historyPackages.map(_buildPackageCard),
             ],
           ],
@@ -327,13 +327,13 @@ class _HistoryPageState extends State<HistoryPage> {
           ),
         );
       },
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(20),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: _borderColor, width: 1),
         ),
         child: Column(
@@ -368,7 +368,7 @@ class _HistoryPageState extends State<HistoryPage> {
               package.operatorName ?? '-',
               style: const TextStyle(fontSize: 14, color: _mutedColor),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Row(
               children: [
                 const Icon(
@@ -390,7 +390,7 @@ class _HistoryPageState extends State<HistoryPage> {
                   ),
                   decoration: BoxDecoration(
                     color: _getStatusBackground(package.status),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                   child: Text(
                     _getStatusLabel(package.status),
