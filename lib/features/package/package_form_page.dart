@@ -26,12 +26,6 @@ class _PackageFormPageState extends State<PackageFormPage> {
     'Smartfren',
   ];
   static const _presetDays = [1, 7, 30];
-  static const _categories = [
-    ('Utama', Icons.public),
-    ('Malam', Icons.nightlight_outlined),
-    ('Sosmed', Icons.devices_other),
-    ('Add-on', Icons.extension_outlined),
-  ];
 
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
@@ -43,7 +37,6 @@ class _PackageFormPageState extends State<PackageFormPage> {
   bool _isActive = false;
 
   String? _operator;
-  int _category = 0; // Hanya tampilan; belum disimpan ke database.
   bool _criticalReminder = true; // Hanya tampilan; belum disimpan.
 
   _Unit _totalUnit = _Unit.gb;
@@ -401,45 +394,6 @@ class _PackageFormPageState extends State<PackageFormPage> {
     );
   }
 
-  Widget _categoryTile(int index) {
-    final (label, icon) = _categories[index];
-    final selected = _category == index;
-
-    return GestureDetector(
-      onTap: () => setState(() => _category = index),
-      child: Container(
-        height: 44,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: selected ? PkgColors.accent : PkgColors.field,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: PkgColors.text, size: 18),
-            const SizedBox(width: 7),
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: PkgColors.text,
-                ),
-              ),
-            ),
-            if (selected)
-              const Icon(
-                Icons.check_circle_outline,
-                color: PkgColors.text,
-                size: 18,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _validityChip(String label, bool selected, VoidCallback onTap) {
     return Expanded(
       child: GestureDetector(
@@ -676,7 +630,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
                 ),
                 const SizedBox(height: 14),
 
-                // Kartu 1: nama, operator, kategori
+                // Kartu 1: nama dan operator
                 PkgCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -715,23 +669,6 @@ class _PackageFormPageState extends State<PackageFormPage> {
                             ],
                           ],
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      _label('Kategori Kuota'),
-                      Row(
-                        children: [
-                          Expanded(child: _categoryTile(0)),
-                          const SizedBox(width: 8),
-                          Expanded(child: _categoryTile(1)),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(child: _categoryTile(2)),
-                          const SizedBox(width: 8),
-                          Expanded(child: _categoryTile(3)),
-                        ],
                       ),
                     ],
                   ),
