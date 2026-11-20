@@ -1,13 +1,21 @@
 // Enum dan pemetaan nilai database untuk kontrak DATAWISE v3.
 
 enum UsageSource { android, manual }
+
 enum UsageReadStatus { ok, permissionDenied, unsupported, error }
+
 enum PlannerStatus { normal, notStarted, depleted, expired }
+
 enum AlertType { daily80, daily100, dailyOver, quota10, expiring1d }
+
 enum PackageStatus { active, inactive, expired, archived }
+
 enum QuotaCategoryType { main, night, social, appSpecific, custom }
+
 enum UsageRecordScope { appUsage, deviceTotal, manualTotal }
+
 enum NetworkType { mobile, wifi, unknown }
+
 enum AllocationMethod { autoRule, mainFallback, manualUser, unclassified }
 
 String packageStatusToDb(PackageStatus value) => switch (value) {

@@ -607,7 +607,10 @@ void main() {
       );
       expect(migratedManualAllocations, hasLength(1));
       expect(migratedManualAllocations.single['allocated_bytes'], 250);
-      expect(migratedManualAllocations.single['allocation_method'], 'UNCLASSIFIED');
+      expect(
+        migratedManualAllocations.single['allocation_method'],
+        'UNCLASSIFIED',
+      );
 
       final rule = (await db.query('classification_rules')).single;
       expect(rule['id'], 'legacy_rule_4');

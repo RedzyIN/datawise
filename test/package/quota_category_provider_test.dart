@@ -245,4 +245,95 @@ void main() {
 
     expect(main.capacityBytes, 15 * gb);
   });
+
+  test('menolak penambahan kategori dari paket yang berbeda', () async {
+    final packageId = await createPackage();
+    await provider.load(packageId);
+
+    final otherId = await createPackage(
+      name: 'Paket Lain',
+      status: PackageStatus.inactive,
+    );
+
+    expect(
+      await provider.add(
+        category(otherId, name: 'Salah Paket', type: QuotaCategoryType.social),
+      ),
+      isFalse,
+    );
+    expect(provider.errorMessage, contains('Paket kategori tidak ditemukan'));
+    expect(provider.categories, hasLength(1));
+    expect(provider.additionalCategories, isEmpty);
+  });
+
+  test('tanpa load provider tidak membuat kategori untuk paket lain', () async {
+    final freshProvider = QuotaCategoryProvider(repository);
+
+    final otherId = await createPackage(
+      name: 'Paket Lain',
+      status: PackageStatus.inactive,
+    );
+
+    // Tanpa load(paketId), guard packageId tidak aktif, sehingga operasi
+    // bergantung pada validasi repository saja.
+    final result = await freshProvider.add(
+      category(
+        otherId,
+        name: 'Tanpa Load',
+        type: QuotaCategoryType.custom,
+        capacityBytes: 1 * gb,
+      ),
+    );
+
+    // Tanpa mainCategory yang dimuat, penambahan harus gagal.
+    expect(result, isFalse);
+    expect(freshProvider.errorMessage, isNotNull);
+    expect(await repository.getByPackage(otherId), hasLength(1));
+  });
+
+  test('state setelah operasi gagal tetap konsisten', () async {
+    final packageId = await createPackage();
+    await provider.load(packageId);
+
+    expect(
+      await provider.add(category(packageId, capacityBytes: 5 * gb)),
+      isTrue,
+    );
+    expect(provider.mainCapacityBytes, 15 * gb);
+    expect(provider.totalAllocatedBytes, 20 * gb);
+
+    // Operasi gagal tidak mengubah state.
+    final before = provider.mainCapacityBytes;
+    expect(
+      await provider.add(
+        category(packageId, capacityBytes: 30 * gb, name: 'Terlalu Besar'),
+      ),
+      isFalse,
+    );
+    expect(provider.mainCapacityBytes, before);
+    expect(provider.additionalCategories, hasLength(1));
+    expect(provider.errorMessage, isNotNull);
+
+    provider.clearError();
+    expect(provider.errorMessage, isNull);
+  });
+
+  test('memuat ulang kategori setelah operasi berhasil', () async {
+    final packageId = await createPackage();
+    await provider.load(packageId);
+
+    expect(
+      await provider.add(category(packageId, capacityBytes: 5 * gb)),
+      isTrue,
+    );
+    expect(provider.additionalCategories, hasLength(1));
+
+    await provider.load(packageId);
+
+    expect(provider.additionalCategories, hasLength(1));
+    expect(provider.mainCapacityBytes, 15 * gb);
+    expect(provider.totalAllocatedBytes, 20 * gb);
+    expect(provider.errorMessage, isNull);
+    expect(provider.isLoading, isFalse);
+  });
 }

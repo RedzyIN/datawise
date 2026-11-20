@@ -40,9 +40,15 @@ class QuotaCategoryProvider extends ChangeNotifier {
   int get mainCapacityBytes => mainCategory?.capacityBytes ?? 0;
 
   Future<void> load(String packageId) async {
+    final isSamePackage = _packageId == packageId;
     _packageId = packageId;
     _isLoading = true;
     _errorMessage = null;
+    // Kosongkan kategori lama supaya data dari paket sebelumnya tidak
+    // bertahan jika pemuatan paket baru gagal atau sedang berjalan.
+    if (!isSamePackage) {
+      _categories = const [];
+    }
     notifyListeners();
 
     try {
@@ -60,6 +66,12 @@ class QuotaCategoryProvider extends ChangeNotifier {
   Future<bool> add(QuotaCategory category) {
     return _run(() async {
       if (category.packageId.trim().isEmpty) {
+        throw const AppException(
+          AppException.validation,
+          'Paket kategori tidak ditemukan.',
+        );
+      }
+      if (_packageId != null && category.packageId != _packageId) {
         throw const AppException(
           AppException.validation,
           'Paket kategori tidak ditemukan.',
