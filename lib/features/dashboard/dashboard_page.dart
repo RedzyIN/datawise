@@ -422,24 +422,13 @@ class _DashboardPageState extends State<DashboardPage>
             ),
           ),
           SizedBox(height: _u(8)),
-          Row(
-            children: [
-              Expanded(
-                child: _SecondaryButton(
-                  icon: Icons.apps_rounded,
-                  label: 'Detail Aplikasi',
-                  onTap: () => _showAppDetails(context, d),
-                ),
-              ),
-              SizedBox(width: _u(8)),
-              Expanded(
-                child: _SecondaryButton(
-                  icon: Icons.shopping_cart_checkout_rounded,
-                  label: 'Beli Paket Ekstra',
-                  onTap: () => Navigator.pushNamed(context, Routes.packageForm),
-                ),
-              ),
-            ],
+          SizedBox(
+            width: double.infinity,
+            child: _SecondaryButton(
+              icon: Icons.apps_rounded,
+              label: 'Detail Aplikasi',
+              onTap: () => _showAppDetails(context, d),
+            ),
           ),
         ],
       ),
@@ -929,13 +918,20 @@ class _PackageCard extends StatelessWidget {
                   height: _u(6),
                   child: Stack(
                     children: [
-                      Container(color: _line),
-                      FractionallySizedBox(
-                        widthFactor: ratio,
-                        child: const DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [_deepTeal, Color(0xFF38D6C4)],
+                      const Positioned.fill(child: ColoredBox(color: _line)),
+                      Positioned.fill(
+                        child: FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: ratio,
+                          heightFactor: 1, // kunci tinggi isian = tinggi trek
+                          child: const DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.all(
+                                Radius.circular(20),
+                              ),
+                              gradient: LinearGradient(
+                                colors: [Color(0xFF6FF2E1), _deepTeal],
+                              ),
                             ),
                           ),
                         ),
