@@ -4,20 +4,20 @@ import 'package:flutter/material.dart';
 class AuthColors {
   AuthColors._();
 
-  static const Color primary = Color(0xFF1A66D6); // biru logo
-  static const Color primaryDark = Color(0xFF1452AD);
-  static const Color backgroundTop = Color(0xFFDCEBFF);
-  static const Color backgroundBottom = Color(0xFFF7FBFF);
-  static const Color field = Color(0xFFE3EFFD);
-  static const Color fieldBorder = Color(0xFFCFE2F9);
-  static const Color chip = Color(0xFFCFE2FB);
-  static const Color textDark = Color(0xFF0F1F3D);
-  static const Color textMuted = Color(0xFF51617A);
-  static const Color hint = Color(0xFF8394AD);
-  static const Color icon = Color(0xFF5B6B84);
+  static const Color primary = Color(0xFF006B5F); // teal tua (tombol, tautan)
+  static const Color primaryDark = Color(0xFF00574D);
+  static const Color backgroundTop = Color(0xFFDFFFFB); // mint kebiruan
+  static const Color backgroundBottom = Color(0xFFE3FFFC);
+  static const Color field = Color(0xFFD0FAF5);
+  static const Color fieldBorder = Color(0xFFBDEFE8);
+  static const Color chip = Color(0xFFB3F5EB);
+  static const Color textDark = Color(0xFF002B26);
+  static const Color textMuted = Color(0xFF3D4F4D);
+  static const Color hint = Color(0xFF7C9996);
+  static const Color icon = Color(0xFF5C6F6D);
 }
 
-/// Latar gradasi biru muda ke putih.
+/// Latar gradasi mint kebiruan.
 class AuthBackground extends StatelessWidget {
   const AuthBackground({super.key, required this.child});
 
@@ -77,7 +77,7 @@ class AuthLogo extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.7),
+        color: AuthColors.chip.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(size * 0.36),
         boxShadow: [
           BoxShadow(
@@ -166,7 +166,7 @@ class AuthTextField extends StatefulWidget {
   final TextCapitalization textCapitalization;
   final int? maxLength;
 
-  /// Widget di kanan label (contoh: tautan "Lupa Kata Sandi?").
+  /// Widget di kanan label (contoh: tautan di samping label).
   final Widget? trailingLabel;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
