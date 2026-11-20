@@ -132,7 +132,7 @@ void main() {
     expect(find.text('Pemakaian 7 Hari Terakhir'), findsOneWidget);
     expect(find.text('Masukkan Pemakaian'), findsOneWidget);
     expect(find.text('Detail Aplikasi'), findsOneWidget);
-    expect(find.text('Beli Paket Ekstra'), findsOneWidget);
+    expect(find.text('Beli Paket Ekstra'), findsNothing);
     expect(find.text('Sisa per Kategori'), findsOneWidget);
     expect(find.text('Kuota Malam'), findsOneWidget);
     expect(find.text('Kuota Sosial'), findsOneWidget);

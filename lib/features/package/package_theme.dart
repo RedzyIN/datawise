@@ -24,7 +24,7 @@ class PkgColors {
 
 /// Avatar profil di app bar.
 class PkgAvatar extends StatelessWidget {
-  const PkgAvatar({super.key, this.onTap, this.size = 40});
+  const PkgAvatar({super.key, this.onTap, this.size = 36});
 
   final VoidCallback? onTap;
   final double size;
@@ -59,7 +59,7 @@ class PkgAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback? onAvatarTap;
 
   @override
-  Size get preferredSize => const Size.fromHeight(64);
+  Size get preferredSize => const Size.fromHeight(56);
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +69,7 @@ class PkgAppBar extends StatelessWidget implements PreferredSizeWidget {
       child: SafeArea(
         bottom: false,
         child: SizedBox(
-          height: 64,
+          height: 56,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
@@ -106,7 +106,7 @@ class PkgCard extends StatelessWidget {
   const PkgCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(16),
+    this.padding = const EdgeInsets.all(14),
     this.margin = EdgeInsets.zero,
   });
 
@@ -121,12 +121,12 @@ class PkgCard extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(18),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x140F766E),
-            blurRadius: 14,
-            offset: Offset(0, 4),
+            color: Color(0x100F766E),
+            blurRadius: 10,
+            offset: Offset(0, 3),
           ),
         ],
       ),
@@ -155,7 +155,7 @@ class PkgPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
@@ -183,7 +183,7 @@ class PkgPill extends StatelessWidget {
               style: TextStyle(
                 color: fg,
                 fontWeight: FontWeight.w700,
-                fontSize: 12,
+                fontSize: 11,
               ),
             ),
           ),

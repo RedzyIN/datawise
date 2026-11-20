@@ -244,7 +244,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
   InputDecoration _fieldDecoration({String? hint, String? suffix}) {
     OutlineInputBorder border(Color? color, [double width = 1]) =>
         OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(14),
           borderSide: color == null
               ? BorderSide.none
               : BorderSide(color: color, width: width),
@@ -253,10 +253,10 @@ class _PackageFormPageState extends State<PackageFormPage> {
     return InputDecoration(
       hintText: hint,
       suffixText: suffix,
-      suffixStyle: const TextStyle(color: PkgColors.muted, fontSize: 13),
+      suffixStyle: const TextStyle(color: PkgColors.muted, fontSize: 12),
       filled: true,
       fillColor: PkgColors.field,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       border: border(null),
       enabledBorder: border(null),
       focusedBorder: border(PkgColors.primary, 1.5),
@@ -293,6 +293,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
   Widget _unitToggle(_Unit value, ValueChanged<_Unit> onChanged) {
     Widget seg(_Unit u, String label) {
       final selected = value == u;
+
       return Expanded(
         child: GestureDetector(
           onTap: () => onChanged(u),
@@ -300,13 +301,13 @@ class _PackageFormPageState extends State<PackageFormPage> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: selected ? Colors.white : Colors.transparent,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
               label,
               style: TextStyle(
                 fontWeight: FontWeight.w800,
-                fontSize: 14,
+                fontSize: 13,
                 color: selected ? PkgColors.primary : PkgColors.muted,
               ),
             ),
@@ -316,12 +317,12 @@ class _PackageFormPageState extends State<PackageFormPage> {
     }
 
     return Container(
-      width: 108,
-      height: 54,
-      padding: const EdgeInsets.all(5),
+      width: 92,
+      height: 44,
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: PkgColors.field,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(children: [seg(_Unit.gb, 'GB'), seg(_Unit.mb, 'MB')]),
     );
@@ -367,30 +368,30 @@ class _PackageFormPageState extends State<PackageFormPage> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
         decoration: BoxDecoration(
           color: selected ? PkgColors.primary : PkgColors.field,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (selected) ...[
               Container(
-                width: 8,
-                height: 8,
+                width: 7,
+                height: 7,
                 decoration: const BoxDecoration(
                   color: PkgColors.accent,
                   shape: BoxShape.circle,
                 ),
               ),
-              const SizedBox(width: 7),
+              const SizedBox(width: 6),
             ],
             Text(
               label,
               style: TextStyle(
                 fontWeight: FontWeight.w700,
-                fontSize: 14,
+                fontSize: 13,
                 color: selected ? Colors.white : PkgColors.muted,
               ),
             ),
@@ -403,25 +404,26 @@ class _PackageFormPageState extends State<PackageFormPage> {
   Widget _categoryTile(int index) {
     final (label, icon) = _categories[index];
     final selected = _category == index;
+
     return GestureDetector(
       onTap: () => setState(() => _category = index),
       child: Container(
-        height: 50,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: selected ? PkgColors.accent : PkgColors.field,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
           children: [
-            Icon(icon, color: PkgColors.text, size: 20),
-            const SizedBox(width: 8),
+            Icon(icon, color: PkgColors.text, size: 18),
+            const SizedBox(width: 7),
             Expanded(
               child: Text(
                 label,
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
-                  fontSize: 14,
+                  fontSize: 13,
                   color: PkgColors.text,
                 ),
               ),
@@ -430,7 +432,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
               const Icon(
                 Icons.check_circle_outline,
                 color: PkgColors.text,
-                size: 20,
+                size: 18,
               ),
           ],
         ),
@@ -443,17 +445,17 @@ class _PackageFormPageState extends State<PackageFormPage> {
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          height: 46,
+          height: 40,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: selected ? PkgColors.primary : PkgColors.field,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
           ),
           child: Text(
             label,
             style: TextStyle(
               fontWeight: FontWeight.w700,
-              fontSize: 13,
+              fontSize: 12,
               color: selected ? Colors.white : PkgColors.muted,
             ),
           ),
@@ -476,7 +478,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
           Text(
             formatDate(date),
             style: TextStyle(
-              fontSize: 18,
+              fontSize: 16,
               fontWeight: FontWeight.w800,
               color: bold ? PkgColors.primary : PkgColors.text,
             ),
@@ -489,8 +491,8 @@ class _PackageFormPageState extends State<PackageFormPage> {
       return GestureDetector(
         onTap: onTap,
         child: Container(
-          width: 42,
-          height: 42,
+          width: 38,
+          height: 38,
           decoration: const BoxDecoration(
             color: PkgColors.chip,
             shape: BoxShape.circle,
@@ -505,7 +507,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
     }
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: PkgColors.field,
         borderRadius: BorderRadius.circular(20),
@@ -586,8 +588,8 @@ class _PackageFormPageState extends State<PackageFormPage> {
       padding: const EdgeInsets.all(14),
       child: Row(
         children: [
-          PkgIconBox(icon, size: 46),
-          const SizedBox(width: 12),
+          PkgIconBox(icon, size: 40),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -595,7 +597,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
                 Text(
                   title,
                   style: const TextStyle(
-                    fontSize: 15,
+                    fontSize: 14,
                     fontWeight: FontWeight.w700,
                     color: PkgColors.text,
                   ),
@@ -635,7 +637,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
           body: Form(
             key: _formKey,
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               children: [
                 Row(
                   children: [
@@ -815,30 +817,30 @@ class _PackageFormPageState extends State<PackageFormPage> {
                 const SizedBox(height: 22),
 
                 SizedBox(
-                  height: 54,
+                  height: 48,
                   child: FilledButton.icon(
                     style: FilledButton.styleFrom(
                       backgroundColor: PkgColors.primary,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                       textStyle: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     onPressed: provider.isLoading ? null : _savePackage,
                     icon: provider.isLoading
                         ? const SizedBox(
-                            width: 20,
-                            height: 20,
+                            width: 18,
+                            height: 18,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
                               color: Colors.white,
                             ),
                           )
-                        : const Icon(Icons.save_outlined, size: 20),
+                        : const Icon(Icons.save_outlined, size: 18),
                     label: Text(
                       _isEditing ? 'Simpan Perubahan' : 'Simpan Paket',
                     ),

@@ -153,14 +153,14 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
   /// Label selalu di kiri, nilai selalu rata kanan dalam satu baris.
   Widget _infoRow(IconData icon, String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
+      padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: PkgColors.primary),
+          Icon(icon, size: 16, color: PkgColors.primary),
           const SizedBox(width: 10),
           Text(
             label,
-            style: const TextStyle(color: PkgColors.muted, fontSize: 14),
+            style: const TextStyle(color: PkgColors.muted, fontSize: 13),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -171,7 +171,7 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontWeight: FontWeight.w700,
-                fontSize: 14,
+                fontSize: 13,
                 color: PkgColors.text,
               ),
             ),
@@ -190,19 +190,19 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
   }) {
     return SizedBox(
       width: double.infinity,
-      height: 52,
+      height: 46,
       child: FilledButton.icon(
         style: FilledButton.styleFrom(
           backgroundColor: bg,
           foregroundColor: fg,
           disabledBackgroundColor: bg.withValues(alpha: 0.5),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(14),
           ),
-          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
         ),
         onPressed: onTap,
-        icon: Icon(icon, size: 20),
+        icon: Icon(icon, size: 18),
         label: Text(label),
       ),
     );
@@ -240,7 +240,7 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
           backgroundColor: PkgColors.bg,
           appBar: const PkgAppBar(title: 'Detail Paket'),
           body: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             children: [
               Row(
                 children: [
@@ -356,7 +356,7 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
                                       child: Text(
                                         value,
                                         style: const TextStyle(
-                                          fontSize: 36,
+                                          fontSize: 30,
                                           fontWeight: FontWeight.w800,
                                           color: PkgColors.primary,
                                         ),
@@ -397,15 +397,15 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
                             ),
                           ),
                           SizedBox(
-                            width: 72,
-                            height: 72,
+                            width: 60,
+                            height: 60,
                             child: Stack(
                               alignment: Alignment.center,
                               children: [
                                 SizedBox.expand(
                                   child: CircularProgressIndicator(
                                     value: frac,
-                                    strokeWidth: 8,
+                                    strokeWidth: 6,
                                     backgroundColor: PkgColors.chip,
                                     color: PkgColors.primary,
                                   ),
@@ -414,7 +414,7 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
                                   '$pct%',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w800,
-                                    fontSize: 13,
+                                    fontSize: 12,
                                     color: PkgColors.primary,
                                   ),
                                 ),

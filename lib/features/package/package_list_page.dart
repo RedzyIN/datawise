@@ -139,7 +139,7 @@ class _PackageListPageState extends State<PackageListPage> {
             child: Text(
               'Daftar Paket',
               style: TextStyle(
-                fontSize: 24,
+                fontSize: 22,
                 fontWeight: FontWeight.w800,
                 color: PkgColors.text,
               ),
@@ -151,7 +151,7 @@ class _PackageListPageState extends State<PackageListPage> {
       const SizedBox(height: 2),
       const Text(
         'Kelola paket aktif dan kuota tambahan dengan cermat.',
-        style: TextStyle(color: PkgColors.muted, fontSize: 13),
+        style: TextStyle(color: PkgColors.muted, fontSize: 12),
       ),
       const SizedBox(height: 14),
       SingleChildScrollView(
@@ -278,20 +278,21 @@ class _PackageListPageState extends State<PackageListPage> {
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: children,
     );
   }
 
   Widget _tabPill(String label, int count, _Tab value) {
     final selected = _tab == value;
+
     return GestureDetector(
       onTap: () => setState(() => _tab = value),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: selected ? PkgColors.primary : Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
           children: [
@@ -299,13 +300,13 @@ class _PackageListPageState extends State<PackageListPage> {
               label,
               style: TextStyle(
                 fontWeight: FontWeight.w700,
-                fontSize: 14,
+                fontSize: 13,
                 color: selected ? Colors.white : PkgColors.text,
               ),
             ),
-            const SizedBox(width: 7),
+            const SizedBox(width: 6),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
               decoration: BoxDecoration(
                 color: selected ? PkgColors.field : PkgColors.chip,
                 borderRadius: BorderRadius.circular(999),
@@ -314,7 +315,7 @@ class _PackageListPageState extends State<PackageListPage> {
                 '$count',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  fontSize: 11,
+                  fontSize: 10,
                   color: selected ? PkgColors.primary : PkgColors.muted,
                 ),
               ),
@@ -337,8 +338,8 @@ class _PackageListPageState extends State<PackageListPage> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const PkgIconBox(Icons.sim_card, size: 46),
-              const SizedBox(width: 12),
+              const PkgIconBox(Icons.sim_card, size: 40),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -348,7 +349,7 @@ class _PackageListPageState extends State<PackageListPage> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 17,
+                        fontSize: 15,
                         fontWeight: FontWeight.w700,
                         color: PkgColors.text,
                       ),
@@ -364,13 +365,13 @@ class _PackageListPageState extends State<PackageListPage> {
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               PkgStatusPill(p),
             ],
           ),
           const SizedBox(height: 12),
           Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: PkgColors.field,
               borderRadius: BorderRadius.circular(18),
@@ -383,7 +384,7 @@ class _PackageListPageState extends State<PackageListPage> {
                     Text(
                       value,
                       style: const TextStyle(
-                        fontSize: 32,
+                        fontSize: 28,
                         fontWeight: FontWeight.w800,
                         color: PkgColors.primary,
                         height: 1,
@@ -436,7 +437,7 @@ class _PackageListPageState extends State<PackageListPage> {
                   borderRadius: BorderRadius.circular(999),
                   child: LinearProgressIndicator(
                     value: frac,
-                    minHeight: 8,
+                    minHeight: 6,
                     backgroundColor: PkgColors.chip,
                     color: PkgColors.primary,
                   ),
@@ -471,7 +472,7 @@ class _PackageListPageState extends State<PackageListPage> {
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Row(
             children: [
               const Icon(
@@ -528,24 +529,24 @@ class _PackageListPageState extends State<PackageListPage> {
     return GestureDetector(
       onTap: loading ? null : _openForm,
       child: PkgCard(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 42,
-              height: 42,
+              width: 36,
+              height: 36,
               decoration: const BoxDecoration(
                 color: PkgColors.accent,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.add, color: PkgColors.primary, size: 24),
+              child: const Icon(Icons.add, color: PkgColors.primary, size: 21),
             ),
             const SizedBox(width: 12),
             const Text(
               'Tambah Paket Baru',
               style: TextStyle(
-                fontSize: 17,
+                fontSize: 15,
                 fontWeight: FontWeight.w700,
                 color: PkgColors.primary,
               ),
@@ -560,15 +561,15 @@ class _PackageListPageState extends State<PackageListPage> {
     return GestureDetector(
       onTap: () => _openDetail(p),
       child: PkgCard(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(12),
         child: Row(
           children: [
             PkgIconBox(
               p.isArchived ? Icons.archive_outlined : Icons.event_busy_outlined,
-              size: 44,
+              size: 38,
               bg: PkgColors.chip,
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
