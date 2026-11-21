@@ -7,8 +7,43 @@ import '../../models/models.dart';
 import 'package_format.dart';
 import 'package_provider.dart';
 import 'package_theme.dart';
+import 'quota_category_format.dart';
+import 'quota_category_provider.dart';
 
 enum _Unit { gb, mb }
+
+/// Kategori yang disiapkan sebelum paket disimpan (mode tambah).
+class _CategoryDraft {
+  const _CategoryDraft({
+    required this.name,
+    required this.type,
+    required this.capacityBytes,
+  });
+
+  final String name;
+  final QuotaCategoryType type;
+  final int capacityBytes;
+}
+
+/// Hasil editor kategori: simpan atau hapus.
+class _CategoryEditorResult {
+  const _CategoryEditorResult.save({
+    required this.name,
+    required this.type,
+    required this.capacityBytes,
+  }) : deleted = false;
+
+  const _CategoryEditorResult.delete()
+    : name = '',
+      type = QuotaCategoryType.custom,
+      capacityBytes = 0,
+      deleted = true;
+
+  final String name;
+  final QuotaCategoryType type;
+  final int capacityBytes;
+  final bool deleted;
+}
 
 class PackageFormPage extends StatefulWidget {
   const PackageFormPage({super.key});
@@ -26,28 +61,23 @@ class _PackageFormPageState extends State<PackageFormPage> {
     'Smartfren',
   ];
   static const _presetDays = [1, 7, 30];
-  static const _categories = [
-    ('Utama', Icons.public),
-    ('Malam', Icons.nightlight_outlined),
-    ('Sosmed', Icons.devices_other),
-    ('Add-on', Icons.extension_outlined),
-  ];
 
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _totalQuotaController = TextEditingController();
-  final _usedQuotaController = TextEditingController();
 
   DataPackage? _editing;
   bool _initialized = false;
   bool _isActive = false;
 
   String? _operator;
-  int _category = 0; // Hanya tampilan; belum disimpan ke database.
   bool _criticalReminder = true; // Hanya tampilan; belum disimpan.
 
   _Unit _totalUnit = _Unit.gb;
-  _Unit _usedUnit = _Unit.gb;
+
+  /// Kategori tambahan yang dibuat saat menambah paket. Disimpan ke database
+  /// setelah paket berhasil dibuat.
+  final List<_CategoryDraft> _drafts = [];
 
   /// null = kustom (tanggal berakhir dipilih manual).
   int? _validityDays = 30;
@@ -56,6 +86,8 @@ class _PackageFormPageState extends State<PackageFormPage> {
   late DateTime _endDate = _startDate.add(const Duration(days: 30));
 
   bool get _isEditing => _editing != null;
+
+  String? get _editingPackageId => _editing?.id;
 
   List<String> get _operators => [
     ..._baseOperators,
@@ -91,6 +123,14 @@ class _PackageFormPageState extends State<PackageFormPage> {
       final length = _endDate.difference(_startDate).inDays;
       _validityDays = _presetDays.contains(length) ? length : null;
       _isActive = package.status == PackageStatus.active;
+
+      final packageId = package.id;
+      if (packageId != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          context.read<QuotaCategoryProvider>().load(packageId);
+        });
+      }
     } else {
       _isActive = context.read<PackageProvider>().activePackage == null;
     }
@@ -100,7 +140,6 @@ class _PackageFormPageState extends State<PackageFormPage> {
   void dispose() {
     _nameController.dispose();
     _totalQuotaController.dispose();
-    _usedQuotaController.dispose();
     super.dispose();
   }
 
@@ -117,6 +156,21 @@ class _PackageFormPageState extends State<PackageFormPage> {
 
   int _toBytes(double value, _Unit unit) =>
       (value * (unit == _Unit.gb ? 1000000000 : 1000000)).round();
+
+  int _totalBytes() {
+    final parsed = _parse(_totalQuotaController.text);
+    if (parsed == null || !parsed.isFinite || parsed <= 0) return 0;
+    return _toBytes(parsed, _totalUnit);
+  }
+
+  int _draftAllocatedBytes([int? excludeIndex]) {
+    var total = 0;
+    for (var i = 0; i < _drafts.length; i++) {
+      if (i == excludeIndex) continue;
+      total += _drafts[i].capacityBytes;
+    }
+    return total;
+  }
 
   Future<void> _selectStartDate() async {
     final selected = await showDatePicker(
@@ -159,29 +213,201 @@ class _PackageFormPageState extends State<PackageFormPage> {
     return null;
   }
 
-  String? _validateUsed(String? value) {
-    if (value == null || value.trim().isEmpty) return null;
-    final used = _parse(value);
-    if (used == null || !used.isFinite || used < 0) {
-      return 'Kuota terpakai harus berupa angka 0 atau lebih.';
+  void _snack(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  // ---------- Kategori kuota ----------
+
+  String _typeCode(QuotaCategoryType type) => switch (type) {
+    QuotaCategoryType.main => 'MAIN',
+    QuotaCategoryType.night => 'NIGHT',
+    QuotaCategoryType.social => 'SOCIAL',
+    QuotaCategoryType.appSpecific => 'APP_SPECIFIC',
+    QuotaCategoryType.custom => 'CUSTOM',
+  };
+
+  Future<void> _openNewDraftCategory() async {
+    final total = _totalBytes();
+    if (total <= 0) {
+      _snack('Isi jumlah total kuota terlebih dahulu.');
+      return;
     }
-    final total = _parse(_totalQuotaController.text);
-    if (total != null && total > 0) {
-      if (_toBytes(used, _usedUnit) > _toBytes(total, _totalUnit)) {
-        return 'Kuota terpakai tidak boleh melebihi total kuota.';
+
+    final remaining = total - _draftAllocatedBytes();
+    if (remaining <= 0) {
+      _snack('Sisa kuota utama tidak mencukupi.');
+      return;
+    }
+
+    final result = await showModalBottomSheet<_CategoryEditorResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _CategoryEditorSheet(
+        title: 'Tambah Kategori',
+        availableBytes: remaining,
+      ),
+    );
+
+    if (result == null || result.deleted || !mounted) return;
+
+    setState(() {
+      _drafts.add(
+        _CategoryDraft(
+          name: result.name,
+          type: result.type,
+          capacityBytes: result.capacityBytes,
+        ),
+      );
+    });
+  }
+
+  Future<void> _editDraftCategory(int index) async {
+    final draft = _drafts[index];
+    final remaining = _totalBytes() - _draftAllocatedBytes(index);
+    if (remaining <= 0) {
+      _snack('Sisa kuota utama tidak mencukupi.');
+      return;
+    }
+
+    final result = await showModalBottomSheet<_CategoryEditorResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _CategoryEditorSheet(
+        title: 'Ubah Kategori',
+        availableBytes: remaining,
+        initialName: draft.name,
+        initialType: draft.type,
+        initialCapacityBytes: draft.capacityBytes,
+        allowDelete: true,
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    setState(() {
+      if (result.deleted) {
+        _drafts.removeAt(index);
+      } else {
+        _drafts[index] = _CategoryDraft(
+          name: result.name,
+          type: result.type,
+          capacityBytes: result.capacityBytes,
+        );
       }
+    });
+  }
+
+  Future<void> _openNewSavedCategory(DataPackage package) async {
+    final provider = context.read<QuotaCategoryProvider>();
+    if (provider.mainCategory == null) {
+      _snack('Kategori utama paket tidak ditemukan.');
+      return;
     }
-    return null;
+
+    final result = await showModalBottomSheet<_CategoryEditorResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _CategoryEditorSheet(
+        title: 'Tambah Kategori',
+        availableBytes: provider.mainCapacityBytes,
+      ),
+    );
+
+    if (result == null || result.deleted || !mounted) return;
+
+    final packageId = package.id;
+    if (packageId == null) return;
+
+    provider.clearError();
+    final success = await provider.add(
+      QuotaCategory(
+        packageId: packageId,
+        categoryName: result.name,
+        categoryType: result.type,
+        capacityBytes: result.capacityBytes,
+        isEnabled: true,
+        createdAt: DateTime.now(),
+      ),
+    );
+
+    if (!mounted) return;
+    if (!success) {
+      _snack(provider.errorMessage ?? 'Gagal menyimpan kategori kuota.');
+    }
+  }
+
+  Future<void> _editSavedCategory(QuotaCategory category) async {
+    final packageId = _editingPackageId;
+    if (packageId == null) return;
+
+    final provider = context.read<QuotaCategoryProvider>();
+    final result = await showModalBottomSheet<_CategoryEditorResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _CategoryEditorSheet(
+        title: 'Ubah Kategori',
+        availableBytes: provider.mainCapacityBytes + category.capacityBytes,
+        initialName: category.categoryName,
+        initialType: category.categoryType,
+        initialCapacityBytes: category.capacityBytes,
+        allowDelete: true,
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    provider.clearError();
+
+    final bool success;
+    if (result.deleted) {
+      success = await provider.delete(category.id!);
+    } else {
+      success = await provider.update(
+        category.copyWith(
+          categoryName: result.name,
+          capacityBytes: result.capacityBytes,
+        ),
+      );
+    }
+
+    if (!mounted) return;
+    if (!success) {
+      _snack(provider.errorMessage ?? 'Gagal menyimpan kategori kuota.');
+    }
   }
 
   Future<void> _savePackage() async {
     if (!_formKey.currentState!.validate()) return;
 
+    if (_drafts.isNotEmpty) {
+      final total = _totalBytes();
+      if (total <= 0 || _draftAllocatedBytes() >= total) {
+        _snack('Total kuota tidak cukup untuk menampung kategori tambahan.');
+        return;
+      }
+    }
+
     final userId = context.read<AuthProvider>().currentUser?.uid;
     if (userId == null || userId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pengguna belum terautentikasi.')),
-      );
+      _snack('Pengguna belum terautentikasi.');
       return;
     }
 
@@ -189,10 +415,6 @@ class _PackageFormPageState extends State<PackageFormPage> {
       _parse(_totalQuotaController.text)!,
       _totalUnit,
     );
-    final usedValue = _parse(_usedQuotaController.text);
-    final usedBytes = (usedValue == null || usedValue <= 0)
-        ? 0
-        : _toBytes(usedValue, _usedUnit);
 
     final now = DateTime.now();
     final endPassed = _endDate.isBefore(DateUtils.dateOnly(now));
@@ -222,21 +444,42 @@ class _PackageFormPageState extends State<PackageFormPage> {
     );
 
     final provider = context.read<PackageProvider>();
+    provider.clearError();
+
+    // Draft kategori ikut dikirim bersama paket agar repository menyimpannya
+    // dalam satu transaksi. ID paket diisi oleh repository saat membuat paket.
+    final draftCategories = [
+      for (final draft in _drafts)
+        QuotaCategory(
+          packageId: package.id ?? '',
+          categoryName: draft.name,
+          categoryType: draft.type,
+          capacityBytes: draft.capacityBytes,
+          isEnabled: true,
+          createdAt: now,
+        ),
+    ];
+
     final success = _isEditing
         ? await provider.updatePackage(package)
-        : await provider.addPackage(package, initialUsedBytes: usedBytes);
+        : await provider.addPackage(package, categories: draftCategories);
 
     if (!mounted) return;
 
-    if (success) {
-      Navigator.pop(context, true);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(provider.errorMessage ?? 'Gagal menyimpan paket.'),
-        ),
-      );
+    if (!success) {
+      // Draft sengaja dipertahankan supaya pengguna dapat mencoba lagi tanpa
+      // membuat paket atau kategori duplikat.
+      _snack(provider.errorMessage ?? 'Gagal menyimpan paket.');
+      return;
     }
+
+    final packageId = _editingPackageId;
+    if (_isEditing && packageId != null) {
+      await context.read<QuotaCategoryProvider>().load(packageId);
+      if (!mounted) return;
+    }
+
+    Navigator.pop(context, true);
   }
 
   // ---------- Widget bantu ----------
@@ -395,45 +638,6 @@ class _PackageFormPageState extends State<PackageFormPage> {
                 color: selected ? Colors.white : PkgColors.muted,
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _categoryTile(int index) {
-    final (label, icon) = _categories[index];
-    final selected = _category == index;
-
-    return GestureDetector(
-      onTap: () => setState(() => _category = index),
-      child: Container(
-        height: 44,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: selected ? PkgColors.accent : PkgColors.field,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: PkgColors.text, size: 18),
-            const SizedBox(width: 7),
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: PkgColors.text,
-                ),
-              ),
-            ),
-            if (selected)
-              const Icon(
-                Icons.check_circle_outline,
-                color: PkgColors.text,
-                size: 18,
-              ),
           ],
         ),
       ),
@@ -624,13 +828,214 @@ class _PackageFormPageState extends State<PackageFormPage> {
     );
   }
 
+  /// Tinggi baris kategori dikunci supaya baris tidak mengempis (flat) saat
+  /// area layar menyusut, misalnya ketika keyboard terbuka.
+  static const double _categoryRowHeight = 40;
+
+  /// Satu baris kategori. Baris sengaja tidak punya latar sendiri agar semua
+  /// baris menyatu dalam satu kotak (lihat [_categoryGroup]).
+  Widget _categoryRow({
+    required String name,
+    required QuotaCategoryType type,
+    required int capacityBytes,
+    VoidCallback? onTap,
+  }) {
+    return SizedBox(
+      height: _categoryRowHeight,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '$name (${_typeCode(type)})',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    height: 1.2,
+                    fontWeight: FontWeight.w600,
+                    color: PkgColors.text,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                formatBytes(capacityBytes),
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.2,
+                  fontWeight: FontWeight.w800,
+                  color: PkgColors.text,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Satu kotak untuk seluruh baris kategori, sesuai desain.
+  Widget _categoryGroup(List<Widget> rows) {
+    return Material(
+      color: PkgColors.field,
+      borderRadius: BorderRadius.circular(14),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(mainAxisSize: MainAxisSize.min, children: rows),
+      ),
+    );
+  }
+
+  Widget _categoryMessage(String message) {
+    return SizedBox(
+      height: _categoryRowHeight,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            message,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: PkgColors.muted, fontSize: 12),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _categoryList({
+    required int count,
+    required List<Widget> rows,
+    required VoidCallback? onManage,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Pembagian Kategori Kuota',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  color: PkgColors.text,
+                ),
+              ),
+            ),
+            Text(
+              '$count Kategori',
+              style: const TextStyle(color: PkgColors.muted, fontSize: 12),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _categoryGroup(rows),
+        const SizedBox(height: 10),
+        InkWell(
+          onTap: onManage,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: PkgColors.chip,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.tune, size: 18, color: PkgColors.primary),
+                SizedBox(width: 8),
+                Text(
+                  'Atur Kategori & Aturan Kuota',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: PkgColors.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _draftCategorySection() {
+    final total = _totalBytes();
+    final allocated = _draftAllocatedBytes();
+    final mainBytes = total > allocated ? total - allocated : 0;
+
+    return _categoryList(
+      count: _drafts.length + 1,
+      rows: [
+        _categoryRow(
+          name: 'Kuota Utama',
+          type: QuotaCategoryType.main,
+          capacityBytes: mainBytes,
+        ),
+        for (var i = 0; i < _drafts.length; i++)
+          _categoryRow(
+            name: _drafts[i].name,
+            type: _drafts[i].type,
+            capacityBytes: _drafts[i].capacityBytes,
+            onTap: () => _editDraftCategory(i),
+          ),
+      ],
+      onManage: _openNewDraftCategory,
+    );
+  }
+
+  Widget _savedCategorySection(
+    DataPackage package,
+    QuotaCategoryProvider provider,
+  ) {
+    final main = provider.mainCategory;
+    final additional = provider.additionalCategories;
+
+    return _categoryList(
+      count: provider.categories.length,
+      rows: [
+        if (provider.isLoading && provider.categories.isEmpty)
+          _categoryMessage('Memuat kategori...')
+        else ...[
+          _categoryRow(
+            name: main?.categoryName ?? 'Kuota Utama',
+            type: QuotaCategoryType.main,
+            capacityBytes: main?.capacityBytes ?? 0,
+          ),
+          for (final category in additional)
+            _categoryRow(
+              name: category.categoryName,
+              type: category.categoryType,
+              capacityBytes: category.capacityBytes,
+              onTap: provider.isLoading
+                  ? null
+                  : () => _editSavedCategory(category),
+            ),
+        ],
+      ],
+      onManage: provider.isLoading
+          ? null
+          : () => _openNewSavedCategory(package),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final archived = _editing?.status == PackageStatus.archived;
     final endPassed = _endDate.isBefore(DateUtils.dateOnly(DateTime.now()));
 
-    return Consumer<PackageProvider>(
-      builder: (context, provider, child) {
+    return Consumer2<PackageProvider, QuotaCategoryProvider>(
+      builder: (context, provider, categoryProvider, child) {
         return Scaffold(
           backgroundColor: PkgColors.bg,
           appBar: const PkgAppBar(title: 'Paket Kuota'),
@@ -638,6 +1043,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
             key: _formKey,
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               children: [
                 Row(
                   children: [
@@ -676,7 +1082,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
                 ),
                 const SizedBox(height: 14),
 
-                // Kartu 1: nama, operator, kategori
+                // Kartu 1: nama dan operator
                 PkgCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -716,34 +1122,17 @@ class _PackageFormPageState extends State<PackageFormPage> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      _label('Kategori Kuota'),
-                      Row(
-                        children: [
-                          Expanded(child: _categoryTile(0)),
-                          const SizedBox(width: 8),
-                          Expanded(child: _categoryTile(1)),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(child: _categoryTile(2)),
-                          const SizedBox(width: 8),
-                          Expanded(child: _categoryTile(3)),
-                        ],
-                      ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 14),
 
-                // Kartu 2: kuota & masa berlaku
+                // Kartu 2: total kuota dan kategori
                 PkgCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _label('Jumlah Total Kuota'),
+                      _label('Jumlah Total Kuota Tertera'),
                       _quotaRow(
                         controller: _totalQuotaController,
                         hint: '30',
@@ -752,18 +1141,21 @@ class _PackageFormPageState extends State<PackageFormPage> {
                         onUnit: (u) => setState(() => _totalUnit = u),
                         showSuffix: true,
                       ),
-                      if (!_isEditing) ...[
-                        const SizedBox(height: 14),
-                        _label('Kuota Sudah Terpakai (Opsional)'),
-                        _quotaRow(
-                          controller: _usedQuotaController,
-                          hint: '0',
-                          validator: _validateUsed,
-                          unit: _usedUnit,
-                          onUnit: (u) => setState(() => _usedUnit = u),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 18),
+                      if (_isEditing && _editing != null)
+                        _savedCategorySection(_editing!, categoryProvider)
+                      else
+                        _draftCategorySection(),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // Kartu 3: masa berlaku
+                PkgCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       _label('Masa Berlaku'),
                       Row(
                         children: [
@@ -851,6 +1243,362 @@ class _PackageFormPageState extends State<PackageFormPage> {
           ),
         );
       },
+    );
+  }
+}
+
+/// Editor kategori sederhana yang dipakai di form paket.
+class _CategoryEditorSheet extends StatefulWidget {
+  const _CategoryEditorSheet({
+    required this.title,
+    required this.availableBytes,
+    this.initialName,
+    this.initialType,
+    this.initialCapacityBytes,
+    this.allowDelete = false,
+  });
+
+  final String title;
+  final int availableBytes;
+  final String? initialName;
+  final QuotaCategoryType? initialType;
+  final int? initialCapacityBytes;
+  final bool allowDelete;
+
+  @override
+  State<_CategoryEditorSheet> createState() => _CategoryEditorSheetState();
+}
+
+class _CategoryEditorSheetState extends State<_CategoryEditorSheet> {
+  static const _types = [
+    QuotaCategoryType.night,
+    QuotaCategoryType.social,
+    QuotaCategoryType.appSpecific,
+    QuotaCategoryType.custom,
+  ];
+
+  final _nameController = TextEditingController();
+  final _capacityController = TextEditingController();
+
+  QuotaCategoryType _type = QuotaCategoryType.night;
+  _Unit _unit = _Unit.gb;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (widget.initialName != null) _nameController.text = widget.initialName!;
+    if (widget.initialType != null &&
+        widget.initialType != QuotaCategoryType.main) {
+      _type = widget.initialType!;
+    }
+
+    final bytes = widget.initialCapacityBytes;
+    if (bytes != null) {
+      if (bytes >= 1000000000) {
+        _unit = _Unit.gb;
+        _capacityController.text = (bytes / 1000000000)
+            .toStringAsFixed(2)
+            .replaceAll(RegExp(r'0+$'), '')
+            .replaceAll(RegExp(r'\.$'), '');
+      } else {
+        _unit = _Unit.mb;
+        _capacityController.text = (bytes / 1000000)
+            .toStringAsFixed(2)
+            .replaceAll(RegExp(r'0+$'), '')
+            .replaceAll(RegExp(r'\.$'), '');
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _capacityController.dispose();
+    super.dispose();
+  }
+
+  int _toBytes(double value, _Unit unit) =>
+      (value * (unit == _Unit.gb ? 1000000000 : 1000000)).round();
+
+  void _submit() {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = 'Nama kategori wajib diisi.');
+      return;
+    }
+
+    final value = double.tryParse(
+      _capacityController.text.trim().replaceAll(',', '.'),
+    );
+    if (value == null || !value.isFinite || value <= 0) {
+      setState(() => _error = 'Kapasitas harus berupa angka lebih dari 0.');
+      return;
+    }
+
+    final bytes = _toBytes(value, _unit);
+    if (bytes >= widget.availableBytes) {
+      setState(() {
+        _error =
+            'Kapasitas harus lebih kecil dari ${formatBytes(widget.availableBytes)}.';
+      });
+      return;
+    }
+
+    Navigator.pop(
+      context,
+      _CategoryEditorResult.save(name: name, type: _type, capacityBytes: bytes),
+    );
+  }
+
+  void _delete() {
+    Navigator.pop(context, const _CategoryEditorResult.delete());
+  }
+
+  Widget _typeChip(QuotaCategoryType type) {
+    final selected = _type == type;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _type = type),
+        child: Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: selected ? PkgColors.accent : PkgColors.field,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                quotaCategoryTypeIcon(type),
+                size: 16,
+                color: selected ? PkgColors.text : PkgColors.muted,
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  quotaCategoryTypeLabel(type),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: selected ? PkgColors.text : PkgColors.muted,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _unitSeg(_Unit unit, String label) {
+    final selected = _unit == unit;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _unit = unit),
+        child: Container(
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+              color: selected ? PkgColors.primary : PkgColors.muted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: PkgColors.text,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close, color: PkgColors.muted),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(child: _typeChip(_types[0])),
+                  const SizedBox(width: 8),
+                  Expanded(child: _typeChip(_types[1])),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(child: _typeChip(_types[2])),
+                  const SizedBox(width: 8),
+                  Expanded(child: _typeChip(_types[3])),
+                ],
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _nameController,
+                style: const TextStyle(fontSize: 15, color: PkgColors.text),
+                decoration: const InputDecoration(
+                  hintText: 'Nama kategori',
+                  filled: true,
+                  fillColor: PkgColors.field,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  border: OutlineInputBorder(borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _capacityController,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        color: PkgColors.text,
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]')),
+                      ],
+                      decoration: const InputDecoration(
+                        hintText: '5',
+                        suffixText: 'Besaran',
+                        suffixStyle: TextStyle(
+                          color: PkgColors.muted,
+                          fontSize: 12,
+                        ),
+                        filled: true,
+                        fillColor: PkgColors.field,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(borderSide: BorderSide.none),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 92,
+                    height: 44,
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: PkgColors.field,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(
+                      children: [
+                        _unitSeg(_Unit.gb, 'GB'),
+                        _unitSeg(_Unit.mb, 'MB'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Sisa kuota utama yang dapat dialokasikan: '
+                '${formatBytes(widget.availableBytes)}.',
+                style: const TextStyle(color: PkgColors.muted, fontSize: 12),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  _error!,
+                  style: const TextStyle(color: PkgColors.danger, fontSize: 12),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  if (widget.allowDelete) ...[
+                    GestureDetector(
+                      onTap: _delete,
+                      child: Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: PkgColors.dangerBg,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.delete_outline,
+                          color: PkgColors.danger,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(
+                    child: SizedBox(
+                      height: 48,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: PkgColors.primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        onPressed: _submit,
+                        child: const Text(
+                          'Simpan Kategori',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -6,6 +6,7 @@ import '../features/auth/login_page.dart';
 import '../features/auth/register_page.dart';
 import '../features/package/package_detail_page.dart';
 import '../features/package/package_form_page.dart';
+import '../features/package/quota_category_form_page.dart';
 import '../features/usage_monitor/usage_manual_page.dart';
 
 abstract class Routes {
@@ -16,6 +17,8 @@ abstract class Routes {
   static const packageForm =
       '/package/form'; // arg: DataPackage? (null = tambah)
   static const packageDetail = '/package/detail'; // arg: int (id paket)
+  static const quotaCategoryForm =
+      '/package/category/form'; // arg: QuotaCategoryFormArgs
   static const usageManual = '/usage/manual'; // arg: DataPackage
 }
 
@@ -27,5 +30,6 @@ final Map<String, WidgetBuilder> appRoutes = {
   Routes.home: (_) => const AuthGate(),
   Routes.packageForm: (_) => const PackageFormPage(),
   Routes.packageDetail: (_) => const PackageDetailPage(),
+  Routes.quotaCategoryForm: (_) => const QuotaCategoryFormPage(),
   Routes.usageManual: (_) => const UsageManualPage(),
 };

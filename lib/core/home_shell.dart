@@ -26,16 +26,27 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(child: IndexedStack(index: _index, children: _pages)),
+      body: SafeArea(
+        child: IndexedStack(index: _index, children: _pages),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
         destinations: const [
           // Label tab: kontrak Arsitek menulis 'Dashboard', desain D menulis 'Beranda'.
-          NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Beranda'),
-          NavigationDestination(icon: Icon(Icons.sim_card_outlined), label: 'Paket'),
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            label: 'Beranda',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.sim_card_outlined),
+            label: 'Paket',
+          ),
           NavigationDestination(icon: Icon(Icons.history), label: 'Riwayat'),
-          NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'Pengaturan'),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            label: 'Pengaturan',
+          ),
         ],
       ),
     );

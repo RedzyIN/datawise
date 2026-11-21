@@ -3,9 +3,5 @@ class AppUser {
   final String? displayName;
   final String? email;
 
-  const AppUser({
-    required this.uid,
-    this.displayName,
-    this.email,
-  });
+  const AppUser({required this.uid, this.displayName, this.email});
 }

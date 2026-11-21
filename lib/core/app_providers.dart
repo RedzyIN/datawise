@@ -6,6 +6,7 @@ import 'package:provider/single_child_widget.dart';
 import '../features/auth/auth_provider.dart';
 import '../features/dashboard/dashboard_provider.dart';
 import '../features/package/package_provider.dart';
+import '../features/package/quota_category_provider.dart';
 import '../features/usage_monitor/usage_provider.dart';
 import '../repositories/repositories.dart';
 import '../services/alert_service.dart';
@@ -68,6 +69,10 @@ List<SingleChildWidget> buildAppProviders() {
 
     ChangeNotifierProvider<PackageProvider>(
       create: (_) => PackageProvider(packageRepo),
+    ),
+
+    ChangeNotifierProvider<QuotaCategoryProvider>(
+      create: (_) => QuotaCategoryProvider(categoryRepo),
     ),
 
     ChangeNotifierProvider<UsageProvider>(

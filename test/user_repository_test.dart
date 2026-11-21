@@ -25,21 +25,24 @@ void main() {
     await helper.close();
   });
 
-  test('profil lokal dapat dibuat dan dibaca berdasarkan UID Firebase', () async {
-    await users.upsert(
-      const AppUser(
-        uid: 'firebase-user-1',
-        displayName: 'Pengguna Tes',
-        email: 'test@example.com',
-      ),
-    );
+  test(
+    'profil lokal dapat dibuat dan dibaca berdasarkan UID Firebase',
+    () async {
+      await users.upsert(
+        const AppUser(
+          uid: 'firebase-user-1',
+          displayName: 'Pengguna Tes',
+          email: 'test@example.com',
+        ),
+      );
 
-    final saved = await users.getById('firebase-user-1');
+      final saved = await users.getById('firebase-user-1');
 
-    expect(saved?.uid, 'firebase-user-1');
-    expect(saved?.displayName, 'Pengguna Tes');
-    expect(saved?.email, 'test@example.com');
-  });
+      expect(saved?.uid, 'firebase-user-1');
+      expect(saved?.displayName, 'Pengguna Tes');
+      expect(saved?.email, 'test@example.com');
+    },
+  );
 
   test('memperbarui profil tidak menghapus paket milik pengguna', () async {
     await users.upsert(

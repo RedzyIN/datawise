@@ -61,15 +61,22 @@ class PackageProvider extends ChangeNotifier {
     }
   }
 
+  /// [categories] disimpan bersamaan dengan paket dalam satu transaksi,
+  /// sehingga kegagalan salah satu kategori tidak meninggalkan data parsial.
   Future<bool> addPackage(
     DataPackage package, {
     int initialUsedBytes = 0,
+    List<QuotaCategory> categories = const [],
   }) async {
     return _run(() async {
       PackageValidator.validate(package);
       PackageValidator.validateInitialUsage(package, initialUsedBytes);
 
-      await _repository.add(package, initialUsedBytes: initialUsedBytes);
+      await _repository.addWithCategories(
+        package,
+        categories: categories,
+        initialUsedBytes: initialUsedBytes,
+      );
 
       _packages = await _repository.getAll(package.userId);
     });
