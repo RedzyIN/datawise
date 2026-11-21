@@ -519,7 +519,16 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
                 ),
               ),
               const SizedBox(height: 14),
-
+              OutlinedButton.icon(
+                onPressed: () => Navigator.pushNamed(
+                  context,
+                  Routes.dataLimit,
+                  arguments: package,
+                ),
+                icon: const Icon(Icons.notifications_active_outlined),
+                label: const Text('Batas Penggunaan Harian'),
+              ),
+              const SizedBox(height: 20),
               if (canActivate) ...[
                 _wideButton(
                   icon: Icons.check_circle_outline,

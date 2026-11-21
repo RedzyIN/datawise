@@ -5,11 +5,14 @@ import 'package:provider/single_child_widget.dart';
 
 import '../features/auth/auth_provider.dart';
 import '../features/dashboard/dashboard_provider.dart';
+import '../features/data_limit/data_limit_provider.dart';
 import '../features/package/package_provider.dart';
 import '../features/usage_monitor/usage_provider.dart';
 import '../repositories/repositories.dart';
 import '../services/alert_service.dart';
 import '../services/auth_service.dart';
+import '../services/data_limit_service.dart';
+import '../services/local_notification_service.dart';
 import '../services/usage_service.dart';
 
 List<SingleChildWidget> buildAppProviders() {
@@ -38,6 +41,17 @@ List<SingleChildWidget> buildAppProviders() {
 
   final AlertService alertService = AlertServiceImpl(alertRepo, settingsRepo);
 
+  final LocalNotificationService localNotificationService =
+      FlutterLocalNotificationService();
+
+  final DataLimitService dataLimitService = DataLimitService(
+    dataLimitRepo,
+    usageRepo,
+    alertRepo,
+    settingsRepo,
+    localNotificationService,
+  );
+
   return [
     Provider<PackageRepository>.value(value: packageRepo),
 
@@ -61,6 +75,12 @@ List<SingleChildWidget> buildAppProviders() {
 
     Provider<AlertService>.value(value: alertService),
 
+    Provider<LocalNotificationService>.value(
+      value: localNotificationService,
+    ),
+
+    Provider<DataLimitService>.value(value: dataLimitService),
+
     // --- Provider ---
     ChangeNotifierProvider<AuthProvider>(
       create: (_) => AuthProvider(authService, userRepo),
@@ -77,6 +97,10 @@ List<SingleChildWidget> buildAppProviders() {
     ChangeNotifierProvider<DashboardProvider>(
       create: (_) =>
           DashboardProvider(packageRepo, usageRepo, usageService, alertService),
+    ),
+
+    ChangeNotifierProvider<DataLimitProvider>(
+      create: (_) => DataLimitProvider(dataLimitService),
     ),
   ];
 }

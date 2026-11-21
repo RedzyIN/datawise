@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import '../features/auth/auth_gate.dart';
 import '../features/auth/login_page.dart';
 import '../features/auth/register_page.dart';
+import '../features/data_limit/data_limit_page.dart';
 import '../features/package/package_detail_page.dart';
 import '../features/package/package_form_page.dart';
 import '../features/usage_monitor/usage_manual_page.dart';
@@ -17,6 +18,7 @@ abstract class Routes {
       '/package/form'; // arg: DataPackage? (null = tambah)
   static const packageDetail = '/package/detail'; // arg: int (id paket)
   static const usageManual = '/usage/manual'; // arg: DataPackage
+  static const dataLimit = '/usage/data-limit'; // arg: DataPackage
 }
 
 final Map<String, WidgetBuilder> appRoutes = {
@@ -28,4 +30,5 @@ final Map<String, WidgetBuilder> appRoutes = {
   Routes.packageForm: (_) => const PackageFormPage(),
   Routes.packageDetail: (_) => const PackageDetailPage(),
   Routes.usageManual: (_) => const UsageManualPage(),
+  Routes.dataLimit: (_) => const DataLimitPage(),
 };
