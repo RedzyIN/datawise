@@ -208,7 +208,16 @@ class SqlitePackageRepository implements PackageRepository {
   }
 
   @override
-  Future<String> add(DataPackage package, {int initialUsedBytes = 0}) async {
+  Future<String> add(DataPackage package, {int initialUsedBytes = 0}) {
+    return addWithCategories(package, initialUsedBytes: initialUsedBytes);
+  }
+
+  @override
+  Future<String> addWithCategories(
+    DataPackage package, {
+    List<QuotaCategory> categories = const [],
+    int initialUsedBytes = 0,
+  }) async {
     _validatePackage(package);
 
     if (initialUsedBytes < 0 ||
@@ -216,6 +225,29 @@ class SqlitePackageRepository implements PackageRepository {
       throw const AppException(
         AppException.validation,
         'Kuota terpakai tidak boleh melebihi total kuota.',
+      );
+    }
+
+    var additionalBytes = 0;
+    for (final category in categories) {
+      if (category.categoryType == QuotaCategoryType.main ||
+          category.categoryName.trim().isEmpty ||
+          category.capacityBytes <= 0 ||
+          (category.validFrom != null &&
+              category.validUntil != null &&
+              category.validUntil!.isBefore(category.validFrom!))) {
+        throw const AppException(
+          AppException.validation,
+          'Data kategori tidak valid.',
+        );
+      }
+      additionalBytes += category.capacityBytes;
+    }
+
+    if (additionalBytes >= package.advertisedTotalQuotaBytes) {
+      throw const AppException(
+        AppException.validation,
+        'Total kuota tidak cukup untuk menampung kategori tambahan.',
       );
     }
 
@@ -248,12 +280,24 @@ class SqlitePackageRepository implements PackageRepository {
         packageId: id,
         categoryName: 'Kuota Utama',
         categoryType: QuotaCategoryType.main,
-        capacityBytes: storedPackage.advertisedTotalQuotaBytes,
+        capacityBytes:
+            storedPackage.advertisedTotalQuotaBytes - additionalBytes,
+        validFrom: storedPackage.startDate,
+        validUntil: storedPackage.endDate,
         isEnabled: true,
         createdAt: storedPackage.createdAt,
       );
 
       await tx.insert('quota_categories', mainCategory.toMap());
+
+      for (final category in categories) {
+        await tx.insert('quota_categories', {
+          ...category.toMap(),
+          'id': category.id ?? _newSqlId('cat'),
+          'package_id': id,
+          'category_name': category.categoryName.trim(),
+        });
+      }
 
       if (initialUsedBytes > 0) {
         final now = DateTime.now();
@@ -386,6 +430,13 @@ class SqlitePackageRepository implements PackageRepository {
 
       final packageMap = storedPackage.toMap();
 
+      // Kategori MAIN selalu mengikuti kapasitas dan masa berlaku paket.
+      final mainValues = {
+        'capacity_bytes': newMainBytes,
+        'valid_from': dateToDb(storedPackage.startDate),
+        'valid_until': dateToDb(storedPackage.endDate),
+      };
+
       if (newTotal >= oldPackage.advertisedTotalQuotaBytes) {
         await tx.update(
           'data_packages',
@@ -395,14 +446,14 @@ class SqlitePackageRepository implements PackageRepository {
         );
         await tx.update(
           'quota_categories',
-          {'capacity_bytes': newMainBytes},
+          mainValues,
           where: 'id = ?',
           whereArgs: [mainId],
         );
       } else {
         await tx.update(
           'quota_categories',
-          {'capacity_bytes': newMainBytes},
+          mainValues,
           where: 'id = ?',
           whereArgs: [mainId],
         );

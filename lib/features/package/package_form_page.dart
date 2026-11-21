@@ -394,43 +394,6 @@ class _PackageFormPageState extends State<PackageFormPage> {
     }
   }
 
-  /// Menyimpan kategori yang dibuat pada mode tambah setelah paket tersimpan.
-  Future<void> _persistDrafts(Set<String?> existingIds) async {
-    final packageProvider = context.read<PackageProvider>();
-
-    DataPackage? created;
-    for (final package in packageProvider.packages) {
-      if (!existingIds.contains(package.id)) {
-        created = package;
-        break;
-      }
-    }
-
-    final packageId = created?.id;
-    if (packageId == null || packageId.isEmpty) return;
-
-    final provider = context.read<QuotaCategoryProvider>();
-    await provider.load(packageId);
-
-    for (final draft in _drafts) {
-      final success = await provider.add(
-        QuotaCategory(
-          packageId: packageId,
-          categoryName: draft.name,
-          categoryType: draft.type,
-          capacityBytes: draft.capacityBytes,
-          isEnabled: true,
-          createdAt: DateTime.now(),
-        ),
-      );
-      if (!success) {
-        if (!mounted) return;
-        _snack(provider.errorMessage ?? 'Gagal menyimpan kategori kuota.');
-        break;
-      }
-    }
-  }
-
   Future<void> _savePackage() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -481,29 +444,41 @@ class _PackageFormPageState extends State<PackageFormPage> {
     );
 
     final provider = context.read<PackageProvider>();
-    final existingIds = provider.packages.map((item) => item.id).toSet();
     provider.clearError();
+
+    // Draft kategori ikut dikirim bersama paket agar repository menyimpannya
+    // dalam satu transaksi. ID paket diisi oleh repository saat membuat paket.
+    final draftCategories = [
+      for (final draft in _drafts)
+        QuotaCategory(
+          packageId: package.id ?? '',
+          categoryName: draft.name,
+          categoryType: draft.type,
+          capacityBytes: draft.capacityBytes,
+          isEnabled: true,
+          createdAt: now,
+        ),
+    ];
 
     final success = _isEditing
         ? await provider.updatePackage(package)
-        : await provider.addPackage(package);
+        : await provider.addPackage(package, categories: draftCategories);
 
     if (!mounted) return;
 
     if (!success) {
+      // Draft sengaja dipertahankan supaya pengguna dapat mencoba lagi tanpa
+      // membuat paket atau kategori duplikat.
       _snack(provider.errorMessage ?? 'Gagal menyimpan paket.');
       return;
     }
 
-    final categoryProvider = context.read<QuotaCategoryProvider>();
-    if (_isEditing) {
-      final packageId = _editingPackageId;
-      if (packageId != null) await categoryProvider.load(packageId);
-    } else if (_drafts.isNotEmpty) {
-      await _persistDrafts(existingIds);
+    final packageId = _editingPackageId;
+    if (_isEditing && packageId != null) {
+      await context.read<QuotaCategoryProvider>().load(packageId);
+      if (!mounted) return;
     }
 
-    if (!mounted) return;
     Navigator.pop(context, true);
   }
 

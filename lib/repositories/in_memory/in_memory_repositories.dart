@@ -41,7 +41,8 @@ class InMemoryPackageRepository implements PackageRepository {
   final Map<String, int> initialUsage = {};
   final List<void Function(String)> _deleteListeners = [];
   final List<bool Function(String)> _deleteGuards = [];
-  final List<void Function(DataPackage)> _addListeners = [];
+  final List<void Function(DataPackage, List<QuotaCategory>)> _addListeners =
+      [];
   final List<void Function(DataPackage, DataPackage)> _updateListeners = [];
 
   int _nextId = 1;
@@ -55,12 +56,37 @@ class InMemoryPackageRepository implements PackageRepository {
     _deleteGuards.add(guard);
   }
 
-  void addAddListener(void Function(DataPackage) listener) {
+  void addAddListener(
+    void Function(DataPackage, List<QuotaCategory>) listener,
+  ) {
     _addListeners.add(listener);
   }
 
   void addUpdateListener(void Function(DataPackage, DataPackage) listener) {
     _updateListeners.add(listener);
+  }
+
+  final List<Object? Function()> _participantSnapshots = [];
+  final List<void Function(Object? state)> _participantRestorers = [];
+
+  /// Mendaftarkan repository lain yang ikut berubah saat paket disimpan
+  /// (misalnya kategori kuota) supaya ikut di-rollback bila operasi gagal.
+  void addTransactionParticipant({
+    required Object? Function() snapshot,
+    required void Function(Object? state) restore,
+  }) {
+    _participantSnapshots.add(snapshot);
+    _participantRestorers.add(restore);
+  }
+
+  List<Object?> _takeParticipantSnapshots() => [
+    for (final snapshot in _participantSnapshots) snapshot(),
+  ];
+
+  void _rollbackParticipants(List<Object?> snapshots) {
+    for (var i = 0; i < _participantRestorers.length; i++) {
+      _participantRestorers[i](snapshots[i]);
+    }
   }
 
   static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -92,7 +118,16 @@ class InMemoryPackageRepository implements PackageRepository {
   }
 
   @override
-  Future<String> add(DataPackage package, {int initialUsedBytes = 0}) async {
+  Future<String> add(DataPackage package, {int initialUsedBytes = 0}) {
+    return addWithCategories(package, initialUsedBytes: initialUsedBytes);
+  }
+
+  @override
+  Future<String> addWithCategories(
+    DataPackage package, {
+    List<QuotaCategory> categories = const [],
+    int initialUsedBytes = 0,
+  }) async {
     _validate(package);
 
     if (initialUsedBytes < 0 ||
@@ -100,6 +135,29 @@ class InMemoryPackageRepository implements PackageRepository {
       throw const AppException(
         AppException.validation,
         'Kuota terpakai tidak boleh melebihi total kuota.',
+      );
+    }
+
+    var additionalBytes = 0;
+    for (final category in categories) {
+      if (category.categoryType == QuotaCategoryType.main ||
+          category.categoryName.trim().isEmpty ||
+          category.capacityBytes <= 0 ||
+          (category.validFrom != null &&
+              category.validUntil != null &&
+              category.validUntil!.isBefore(category.validFrom!))) {
+        throw const AppException(
+          AppException.validation,
+          'Data kategori tidak valid.',
+        );
+      }
+      additionalBytes += category.capacityBytes;
+    }
+
+    if (additionalBytes >= package.advertisedTotalQuotaBytes) {
+      throw const AppException(
+        AppException.validation,
+        'Total kuota tidak cukup untuk menampung kategori tambahan.',
       );
     }
 
@@ -113,6 +171,13 @@ class InMemoryPackageRepository implements PackageRepository {
           : package.operatorName?.trim(),
     );
 
+    // Snapshot seluruh state yang dapat berubah selama operasi. Rollback harus
+    // mengembalikan paket, initial usage, status paket aktif sebelumnya, dan
+    // state repository lain yang berpartisipasi (kategori kuota).
+    final packageSnapshot = Map<String, DataPackage>.of(_items);
+    final usageSnapshot = Map<String, int>.of(initialUsage);
+    final participantSnapshots = _takeParticipantSnapshots();
+
     if (saved.status == PackageStatus.active) {
       _deactivate(saved.userId, id);
     }
@@ -120,8 +185,19 @@ class InMemoryPackageRepository implements PackageRepository {
     _items[id] = saved;
     if (initialUsedBytes > 0) initialUsage[id] = initialUsedBytes;
 
-    for (final listener in _addListeners) {
-      listener(saved);
+    try {
+      for (final listener in _addListeners) {
+        listener(saved, categories);
+      }
+    } catch (_) {
+      _items
+        ..clear()
+        ..addAll(packageSnapshot);
+      initialUsage
+        ..clear()
+        ..addAll(usageSnapshot);
+      _rollbackParticipants(participantSnapshots);
+      rethrow;
     }
 
     return id;
@@ -154,15 +230,26 @@ class InMemoryPackageRepository implements PackageRepository {
       createdAt: oldPackage.createdAt,
     );
 
-    for (final listener in _updateListeners) {
-      listener(oldPackage, storedPackage);
-    }
+    final packageSnapshot = Map<String, DataPackage>.of(_items);
+    final participantSnapshots = _takeParticipantSnapshots();
 
-    if (storedPackage.status == PackageStatus.active) {
-      _deactivate(storedPackage.userId, id);
-    }
+    try {
+      for (final listener in _updateListeners) {
+        listener(oldPackage, storedPackage);
+      }
 
-    _items[id] = storedPackage;
+      if (storedPackage.status == PackageStatus.active) {
+        _deactivate(storedPackage.userId, id);
+      }
+
+      _items[id] = storedPackage;
+    } catch (_) {
+      _items
+        ..clear()
+        ..addAll(packageSnapshot);
+      _rollbackParticipants(participantSnapshots);
+      rethrow;
+    }
   }
 
   @override
@@ -272,10 +359,18 @@ class InMemoryQuotaCategoryRepository implements QuotaCategoryRepository {
     packages.addAddListener(_createMainCategory);
     packages.addUpdateListener(_handlePackageUpdate);
     packages.addDeleteListener(_handlePackageDelete);
+    packages.addTransactionParticipant(
+      snapshot: () => Map<String, QuotaCategory>.of(items),
+      restore: (state) {
+        items
+          ..clear()
+          ..addAll(state as Map<String, QuotaCategory>);
+      },
+    );
 
     // Also handle packages created before this repository was constructed.
     for (final package in packages._items.values) {
-      _createMainCategory(package);
+      _createMainCategory(package, const []);
     }
   }
 
@@ -294,20 +389,51 @@ class InMemoryQuotaCategoryRepository implements QuotaCategoryRepository {
     _deleteGuards.add(guard);
   }
 
-  void _createMainCategory(DataPackage package) {
-    final id = _memoryId('category', _nextId++);
+  /// Validasi yang sama dengan [SqliteQuotaCategoryRepository]: nama wajib,
+  /// kapasitas positif, dan rentang tanggal tidak terbalik bila keduanya ada.
+  void _validateCategory(QuotaCategory category) {
+    if (category.categoryName.trim().isEmpty ||
+        category.capacityBytes <= 0 ||
+        (category.validFrom != null &&
+            category.validUntil != null &&
+            category.validUntil!.isBefore(category.validFrom!))) {
+      throw const AppException(
+        AppException.validation,
+        'Data kategori tidak valid.',
+      );
+    }
+  }
 
-    items[id] = QuotaCategory(
-      id: id,
-      packageId: package.id!,
+  void _createMainCategory(
+    DataPackage package,
+    List<QuotaCategory> additional,
+  ) {
+    final packageId = package.id!;
+    var mainCapacity = package.advertisedTotalQuotaBytes;
+
+    for (final category in additional) {
+      mainCapacity -= category.capacityBytes;
+    }
+
+    final mainId = _memoryId('category', _nextId++);
+
+    items[mainId] = QuotaCategory(
+      id: mainId,
+      packageId: packageId,
       categoryName: 'Kuota Utama',
       categoryType: QuotaCategoryType.main,
-      capacityBytes: package.advertisedTotalQuotaBytes,
+      capacityBytes: mainCapacity,
       validFrom: package.startDate,
       validUntil: package.endDate,
       isEnabled: true,
       createdAt: package.createdAt,
     );
+
+    for (final category in additional) {
+      final id = category.id ?? _memoryId('category', _nextId++);
+
+      items[id] = category.copyWith(id: id, packageId: packageId);
+    }
   }
 
   void _handlePackageUpdate(DataPackage oldPackage, DataPackage newPackage) {
@@ -358,9 +484,9 @@ class InMemoryQuotaCategoryRepository implements QuotaCategoryRepository {
 
   @override
   Future<String> add(QuotaCategory category) async {
-    if (category.categoryName.trim().isEmpty ||
-        category.capacityBytes <= 0 ||
-        category.categoryType == QuotaCategoryType.main) {
+    _validateCategory(category);
+
+    if (category.categoryType == QuotaCategoryType.main) {
       throw const AppException(
         AppException.validation,
         'Data kategori tidak valid.',
@@ -411,12 +537,7 @@ class InMemoryQuotaCategoryRepository implements QuotaCategoryRepository {
       );
     }
 
-    if (category.categoryName.trim().isEmpty || category.capacityBytes <= 0) {
-      throw const AppException(
-        AppException.validation,
-        'Data kategori tidak valid.',
-      );
-    }
+    _validateCategory(category);
 
     final old = items[id]!;
 
