@@ -40,8 +40,9 @@ class UsageAllocation {
     quotaCategoryId: map['quota_category_id'] as String?,
     classificationRuleId: map['classification_rule_id'] as String?,
     allocatedBytes: map['allocated_bytes'] as int,
-    allocationMethod:
-        allocationMethodFromDb(map['allocation_method'] as String),
+    allocationMethod: allocationMethodFromDb(
+      map['allocation_method'] as String,
+    ),
     createdAt: timeFromIso(map['created_at'] as String),
   );
 }
