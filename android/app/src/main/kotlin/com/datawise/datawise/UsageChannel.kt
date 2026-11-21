@@ -1,6 +1,7 @@
 package com.datawise.datawise
 
 import android.app.AppOpsManager
+import android.app.usage.NetworkStats
 import android.app.usage.NetworkStatsManager
 import android.content.Context
 import android.content.Intent
@@ -46,9 +47,28 @@ class UsageChannel(private val context: Context) : MethodChannel.MethodCallHandl
                     main.post { result.success(map) }
                 }
             }
+            "getMobileUsageByApp" -> {
+                val start = call.argument<Number>("startMillis")?.toLong() ?: 0L
+                val end = call.argument<Number>("endMillis")?.toLong() ?: 0L
+                executor.execute {
+                    val map = readAppUsage(start, end)
+                    main.post { result.success(map) }
+                }
+            }
             else -> result.notImplemented()
         }
     }
+
+    // Perpanjangan ujung query agar bucket berjalan (belum utuh) ikut terbaca.
+    // Panjang bucket NetworkStats berada di kisaran jam, jadi 6 jam cukup
+    // untuk semua varian perangkat tanpa menarik data masa depan.
+    private val ONGOING_BUCKET_GRACE_MS = 6L * 60 * 60 * 1000
+
+    // Cache UID -> identitas aplikasi karena queryDetails menghasilkan banyak
+    // bucket untuk UID yang sama.
+    private val uidInfoCache = HashMap<Int, UidInfo>()
+
+    private data class UidInfo(val packageName: String?, val appName: String)
 
     private fun hasPermission(): Boolean {
         val ops = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
@@ -75,6 +95,121 @@ class UsageChannel(private val context: Context) : MethodChannel.MethodCallHandl
             out("permission_denied", 0L, "Izin ditolak sistem.")
         } catch (e: Exception) {
             out("error", 0L, e.message ?: "Gagal membaca statistik.")
+        }
+    }
+
+    // Rincian per UID aplikasi. Bucket dengan UID dan rentang waktu sama
+    // digabung agar state foreground/background tidak dihitung dua kali.
+    private fun readAppUsage(start: Long, end: Long): Map<String, Any?> {
+        fun out(status: String, apps: List<Map<String, Any?>>, msg: String?) = mapOf(
+            "status" to status, "apps" to apps,
+            "startMillis" to start, "endMillis" to end, "message" to msg
+        )
+        if (end <= start) return out("error", emptyList(), "Rentang waktu tidak valid.")
+        if (!hasPermission()) return out("permission_denied", emptyList(), "Izin akses penggunaan belum diberikan.")
+        return try {
+            val nsm = context.getSystemService(Context.NETWORK_STATS_SERVICE) as? NetworkStatsManager
+                ?: return out("unsupported", emptyList(), "Perangkat tidak mendukung statistik data.")
+            // queryDetails hanya mengembalikan bucket yang seluruh rentangnya
+            // berada di dalam [start, end] ("only includes buckets that
+            // atomically occur in the inclusive time range"). Akibatnya bucket
+            // yang masih berjalan - tempat pemakaian terbaru - tidak pernah
+            // ikut, sehingga angka aplikasi baru bertambah setelah bucket
+            // selesai. Ujung query diperpanjang melewati batas bucket agar
+            // bucket berjalan tetap terbaca; data setelah `end` belum ada dan
+            // tetap dipotong ke waktu sekarang saat disimpan.
+            val queryEnd = end + ONGOING_BUCKET_GRACE_MS
+            val stats = nsm.queryDetails(
+                ConnectivityManager.TYPE_MOBILE, null, start, queryEnd
+            )
+            val aggregated = LinkedHashMap<String, MutableMap<String, Any?>>()
+            try {
+                val bucket = NetworkStats.Bucket()
+                while (stats.hasNextBucket()) {
+                    stats.getNextBucket(bucket)
+                    if (bucket.uid < 0) continue
+                    val key = "${bucket.uid}|${bucket.startTimeStamp}|${bucket.endTimeStamp}"
+                    val existing = aggregated[key]
+                    if (existing == null) {
+                        val uidInfo = resolveUid(bucket.uid)
+                        aggregated[key] = mutableMapOf(
+                            "uid" to bucket.uid,
+                            "packageName" to uidInfo.packageName,
+                            "appName" to uidInfo.appName,
+                            "rxBytes" to bucket.rxBytes,
+                            "txBytes" to bucket.txBytes,
+                            "bucketStartMillis" to bucket.startTimeStamp,
+                            "bucketEndMillis" to bucket.endTimeStamp
+                        )
+                    } else {
+                        existing["rxBytes"] = (existing["rxBytes"] as Long) + bucket.rxBytes
+                        existing["txBytes"] = (existing["txBytes"] as Long) + bucket.txBytes
+                    }
+                }
+            } finally {
+                stats.close()
+            }
+            out("ok", aggregated.values.toList(), null)
+        } catch (e: SecurityException) {
+            out("permission_denied", emptyList(), "Izin ditolak sistem.")
+        } catch (e: Exception) {
+            out("error", emptyList(), e.message ?: "Gagal membaca statistik aplikasi.")
+        }
+    }
+
+    // Pemetaan UID ke aplikasi. Android 11+ membatasi package visibility, jadi
+    // <queries> MAIN/LAUNCHER di manifest membuat aplikasi ber-launcher terlihat
+    // dan labelnya terbaca. UID sistem tanpa paket memakai label tetap supaya
+    // tidak tampil sebagai "uid-xxxx".
+    private fun resolveUid(uid: Int): UidInfo = synchronized(uidInfoCache) {
+        uidInfoCache.getOrPut(uid) { lookupUid(uid) }
+    }
+
+    private fun lookupUid(uid: Int): UidInfo {
+        val pm = context.packageManager
+        val packages = try {
+            pm.getPackagesForUid(uid)?.sorted().orEmpty()
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+        // Satu UID bisa dipakai beberapa paket (mis. layanan Google). Utamakan
+        // paket yang punya launcher karena itulah yang dikenal pengguna.
+        val preferred = packages.firstOrNull { name ->
+            try {
+                pm.getLaunchIntentForPackage(name) != null
+            } catch (_: Exception) {
+                false
+            }
+        } ?: packages.firstOrNull()
+
+        if (preferred != null) {
+            val label = try {
+                val appInfo = pm.getApplicationInfo(preferred, 0)
+                pm.getApplicationLabel(appInfo).toString().trim()
+            } catch (_: Exception) {
+                ""
+            }
+            return UidInfo(preferred, label.ifEmpty { preferred })
+        }
+
+        return UidInfo(null, systemUidLabel(uid))
+    }
+
+    private fun systemUidLabel(uid: Int): String = when (uid) {
+        0 -> "Root"
+        1000 -> "Sistem Android"
+        1001 -> "Radio"
+        1002 -> "Bluetooth"
+        1010 -> "Wi-Fi"
+        1013 -> "Media"
+        1016 -> "VPN"
+        1073 -> "Network Stack"
+        2000 -> "Shell"
+        else -> if (uid < 10000) {
+            "Layanan sistem (UID $uid)"
+        } else {
+            "Aplikasi tidak dikenal (UID $uid)"
         }
     }
 

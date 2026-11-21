@@ -55,8 +55,10 @@ class DataLimitService {
     return setting?.notificationsEnabled ?? true;
   }
 
-  // Pemakaian efektif satu hari. Manual menggantikan otomatis; agregat
-  // perangkat dan total per aplikasi tidak pernah dijumlahkan bersama.
+  // Pemakaian efektif satu hari. Manual menggantikan otomatis.
+  // Urutan otomatis mengikuti PRD 5.4 dan DashboardProvider: DEVICE_TOTAL
+  // lebih dulu, APP_USAGE hanya bila agregat perangkat tidak tersedia.
+  // Keduanya tidak pernah dijumlahkan bersama.
   Future<int> usedBytesOn(String packageId, DateTime day) async {
     final start = dateOnly(day);
     final end = start.add(const Duration(days: 1));
@@ -78,10 +80,10 @@ class DataLimitService {
     final manual = totalOf(UsageRecordScope.manualTotal);
     if (manual > 0) return manual;
 
-    final perApp = totalOf(UsageRecordScope.appUsage);
-    if (perApp > 0) return perApp;
+    final device = totalOf(UsageRecordScope.deviceTotal);
+    if (device > 0) return device;
 
-    return totalOf(UsageRecordScope.deviceTotal);
+    return totalOf(UsageRecordScope.appUsage);
   }
 
   // Menghitung penggunaan dan menentukan status peringatan.

@@ -7,13 +7,16 @@ import '../features/auth/auth_provider.dart';
 import '../features/dashboard/dashboard_provider.dart';
 import '../features/data_limit/data_limit_provider.dart';
 import '../features/package/package_provider.dart';
+import '../features/usage_breakdown/usage_breakdown_provider.dart';
 import '../features/usage_monitor/usage_provider.dart';
 import '../repositories/repositories.dart';
 import '../services/alert_service.dart';
 import '../services/auth_service.dart';
 import '../services/data_limit_service.dart';
 import '../services/local_notification_service.dart';
+import '../services/usage_breakdown_service.dart';
 import '../services/usage_service.dart';
+import '../services/usage_sync_service.dart';
 
 List<SingleChildWidget> buildAppProviders() {
   // --- Repository SQLite ---
@@ -52,6 +55,16 @@ List<SingleChildWidget> buildAppProviders() {
     localNotificationService,
   );
 
+  final UsageSyncService usageSyncService = UsageSyncService(
+    usageService,
+    usageRepo,
+    categoryRepo,
+  );
+
+  final UsageBreakdownService usageBreakdownService = UsageBreakdownService(
+    usageRepo,
+  );
+
   return [
     Provider<PackageRepository>.value(value: packageRepo),
 
@@ -81,6 +94,10 @@ List<SingleChildWidget> buildAppProviders() {
 
     Provider<DataLimitService>.value(value: dataLimitService),
 
+    Provider<UsageSyncService>.value(value: usageSyncService),
+
+    Provider<UsageBreakdownService>.value(value: usageBreakdownService),
+
     // --- Provider ---
     ChangeNotifierProvider<AuthProvider>(
       create: (_) => AuthProvider(authService, userRepo),
@@ -95,8 +112,21 @@ List<SingleChildWidget> buildAppProviders() {
     ),
 
     ChangeNotifierProvider<DashboardProvider>(
-      create: (_) =>
-          DashboardProvider(packageRepo, usageRepo, usageService, alertService),
+      create: (_) => DashboardProvider(
+        packageRepo,
+        usageRepo,
+        usageService,
+        alertService,
+        usageSync: usageSyncService,
+      ),
+    ),
+
+    ChangeNotifierProvider<UsageBreakdownProvider>(
+      create: (_) => UsageBreakdownProvider(
+        usageBreakdownService,
+        usageSyncService,
+        usageService,
+      ),
     ),
 
     ChangeNotifierProvider<DataLimitProvider>(

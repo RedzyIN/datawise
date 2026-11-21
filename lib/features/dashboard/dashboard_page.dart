@@ -11,6 +11,7 @@ import '../../core/constants.dart';
 import '../../core/routes.dart';
 import '../../models/models.dart';
 import '../auth/auth_provider.dart';
+import '../usage_breakdown/usage_breakdown_sheet.dart';
 import 'dashboard_provider.dart';
 
 const _teal = Color(0xFF00796F);
@@ -427,7 +428,12 @@ class _DashboardPageState extends State<DashboardPage>
             child: _SecondaryButton(
               icon: Icons.apps_rounded,
               label: 'Detail Aplikasi',
-              onTap: () => _showAppDetails(context, d),
+              onTap: () => _showAppDetails(
+                context,
+                d,
+                v.packageForNav,
+                preview: preview,
+              ),
             ),
           ),
         ],
@@ -522,7 +528,23 @@ class _DashboardPageState extends State<DashboardPage>
 
   // ------------------------------------------------------------ dialog
 
-  void _showAppDetails(BuildContext context, DashboardProvider d) {
+  void _showAppDetails(
+    BuildContext context,
+    DashboardProvider d,
+    DataPackage package, {
+    bool preview = false,
+  }) {
+    if (!preview && package.id != null) {
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        backgroundColor: Colors.white,
+        builder: (_) => UsageBreakdownSheet(package: package),
+      );
+      return;
+    }
+
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,

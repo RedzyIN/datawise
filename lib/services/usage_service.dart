@@ -11,7 +11,49 @@ abstract class UsageService {
 
   Future<UsageReading> readMobileUsage(DateTime start, DateTime end);
 
+  /// Rincian pemakaian seluler per UID/aplikasi dari NetworkStats Android.
+  Future<AppUsageReading> readAppUsage(DateTime start, DateTime end);
+
   Future<UsageReading> refreshToday(DataPackage package);
+}
+
+/// Satu bucket statistik Android untuk satu UID.
+class AppUsageBucket {
+  final int uid;
+  final String? packageName;
+  final String? appName;
+  final int rxBytes;
+  final int txBytes;
+  final DateTime start;
+  final DateTime end;
+
+  const AppUsageBucket({
+    required this.uid,
+    required this.packageName,
+    required this.appName,
+    required this.rxBytes,
+    required this.txBytes,
+    required this.start,
+    required this.end,
+  });
+
+  int get totalBytes => rxBytes + txBytes;
+}
+
+class AppUsageReading {
+  final UsageReadStatus status;
+  final List<AppUsageBucket> buckets;
+  final DateTime start;
+  final DateTime end;
+  final String? message;
+
+  const AppUsageReading({
+    required this.status,
+    required this.buckets,
+    required this.start,
+    required this.end,
+    required this.message,
+  });
 }
 
 class UsageServiceImpl implements UsageService {
@@ -130,6 +172,97 @@ class UsageServiceImpl implements UsageService {
   }
 
   @override
+  Future<AppUsageReading> readAppUsage(DateTime start, DateTime end) async {
+    if (!end.isAfter(start)) {
+      return AppUsageReading(
+        status: UsageReadStatus.error,
+        buckets: const [],
+        start: start,
+        end: end,
+        message: 'Rentang waktu tidak valid.',
+      );
+    }
+
+    try {
+      final result = await _channel.invokeMapMethod<String, dynamic>(
+        'getMobileUsageByApp',
+        {
+          'startMillis': start.millisecondsSinceEpoch,
+          'endMillis': end.millisecondsSinceEpoch,
+        },
+      );
+
+      if (result == null) {
+        return AppUsageReading(
+          status: UsageReadStatus.error,
+          buckets: const [],
+          start: start,
+          end: end,
+          message: 'Android tidak memberikan hasil pembacaan.',
+        );
+      }
+
+      final rawBuckets = result['apps'] as List<dynamic>? ?? const [];
+      final buckets = <AppUsageBucket>[];
+
+      for (final item in rawBuckets) {
+        if (item is! Map) continue;
+
+        final rxBytes = (item['rxBytes'] as num?)?.toInt() ?? 0;
+        final txBytes = (item['txBytes'] as num?)?.toInt() ?? 0;
+        if (rxBytes + txBytes <= 0) continue;
+
+        final bucketStart = (item['bucketStartMillis'] as num?)?.toInt() ?? 0;
+        final bucketEnd = (item['bucketEndMillis'] as num?)?.toInt() ?? 0;
+
+        buckets.add(
+          AppUsageBucket(
+            uid: (item['uid'] as num?)?.toInt() ?? -1,
+            packageName: item['packageName'] as String?,
+            appName: item['appName'] as String?,
+            rxBytes: rxBytes,
+            txBytes: txBytes,
+            start: DateTime.fromMillisecondsSinceEpoch(bucketStart),
+            end: DateTime.fromMillisecondsSinceEpoch(bucketEnd),
+          ),
+        );
+      }
+
+      return AppUsageReading(
+        status: _parseStatus(result['status'] as String?),
+        buckets: buckets,
+        start: start,
+        end: end,
+        message: result['message'] as String?,
+      );
+    } on PlatformException catch (e) {
+      return AppUsageReading(
+        status: UsageReadStatus.error,
+        buckets: const [],
+        start: start,
+        end: end,
+        message: e.message ?? 'Terjadi kesalahan pada Android.',
+      );
+    } on MissingPluginException {
+      return AppUsageReading(
+        status: UsageReadStatus.unsupported,
+        buckets: const [],
+        start: start,
+        end: end,
+        message: 'MethodChannel Usage belum tersedia.',
+      );
+    } catch (e) {
+      return AppUsageReading(
+        status: UsageReadStatus.error,
+        buckets: const [],
+        start: start,
+        end: end,
+        message: 'Gagal membaca penggunaan per aplikasi: $e',
+      );
+    }
+  }
+
+  @override
   Future<UsageReading> refreshToday(DataPackage package) async {
     final now = DateTime.now();
     final start = dateOnly(now);
@@ -144,7 +277,7 @@ class UsageServiceImpl implements UsageService {
     }
 
     // Hasilnya tetap statistik agregat perangkat.
-    // Tidak disimpan sebagai pemakaian paket.
+    // Penyimpanan ke usage_records dilakukan oleh UsageSyncService.
     return readMobileUsage(start, now);
   }
 }

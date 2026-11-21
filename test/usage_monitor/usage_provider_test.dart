@@ -35,6 +35,17 @@ class FakeUsageService implements UsageService {
   }
 
   @override
+  Future<AppUsageReading> readAppUsage(DateTime start, DateTime end) async {
+    return AppUsageReading(
+      status: UsageReadStatus.ok,
+      buckets: const [],
+      start: start,
+      end: end,
+      message: null,
+    );
+  }
+
+  @override
   Future<UsageReading> refreshToday(DataPackage package) async {
     refreshCallCount++;
 

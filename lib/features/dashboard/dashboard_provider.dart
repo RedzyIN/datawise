@@ -6,6 +6,7 @@
   import '../../services/alert_service.dart';
   import '../../services/planner_service.dart';
   import '../../services/usage_service.dart';
+  import '../../services/usage_sync_service.dart';
 
   enum DashboardLoad { loading, ready, noPackage, error }
 
@@ -14,13 +15,15 @@
       this._packageRepo,
       this._usageRepo,
       this._usageService,
-      this._alertService,
-    );
+      this._alertService, {
+      this.usageSync,
+    });
 
     final PackageRepository _packageRepo;
     final UsageRepository _usageRepo;
     final UsageService _usageService;
     final AlertService _alertService;
+    final UsageSyncService? usageSync;
 
     DashboardLoad loadState = DashboardLoad.loading;
     DataPackage? package;
@@ -145,6 +148,14 @@
         if (hasPermission) {
           final reading = await _usageService.refreshToday(active);
           lastReading = reading;
+
+          // Simpan statistik perangkat dan per aplikasi ke usage_records.
+          // Kegagalan penyimpanan tidak boleh merusak Dashboard.
+          if (usageSync != null) {
+            try {
+              await usageSync!.syncToday(active, deviceReading: reading);
+            } catch (_) {}
+          }
 
           if (reading.status == UsageReadStatus.ok) {
             lastUpdatedAt = DateTime.now();

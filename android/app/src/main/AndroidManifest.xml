@@ -58,6 +58,13 @@
     </application>
 
     <queries>
+        <!-- Anggota C: label aplikasi untuk rincian pemakaian per UID.
+             Android 11+ membatasi daftar paket yang bisa dibaca, jadi
+             aplikasi ber-launcher perlu dideklarasikan agar namanya terbaca. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />

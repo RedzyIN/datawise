@@ -413,7 +413,7 @@ void main() {
       );
     });
 
-    test('per aplikasi dipakai sebelum agregat perangkat', () async {
+    test('agregat perangkat dipakai sebelum total per aplikasi', () async {
       await addRecord(
         scope: UsageRecordScope.appUsage,
         source: UsageSource.android,
@@ -425,6 +425,22 @@ void main() {
         source: UsageSource.android,
         bytes: 9 * kBytesPerMB,
         sourceKey: 'device-2',
+      );
+
+      // PRD 5.4: DEVICE_TOTAL menjadi acuan batas harian bila tersedia;
+      // APP_USAGE tidak dijumlahkan dan hanya menjadi cadangan.
+      expect(
+        await service.usedBytesOn(package.id!, DateTime.now()),
+        9 * kBytesPerMB,
+      );
+    });
+
+    test('total per aplikasi dipakai bila agregat perangkat tidak ada', () async {
+      await addRecord(
+        scope: UsageRecordScope.appUsage,
+        source: UsageSource.android,
+        bytes: 7 * kBytesPerMB,
+        sourceKey: 'auto-3',
       );
 
       expect(
