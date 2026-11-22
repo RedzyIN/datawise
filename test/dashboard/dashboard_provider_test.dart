@@ -6,9 +6,10 @@ import 'package:datawise/services/usage_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeUsageService implements UsageService {
-  _FakeUsageService(this.granted);
+  _FakeUsageService(this.granted, {this.totalBytes = 0});
 
   final bool granted;
+  final int totalBytes;
 
   @override
   Future<bool> hasPermission() async => granted;
@@ -34,7 +35,7 @@ class _FakeUsageService implements UsageService {
 
     return UsageReading(
       status: UsageReadStatus.ok,
-      totalBytes: 0,
+      totalBytes: totalBytes,
       start: dateOnly(now),
       end: now,
       message: null,
@@ -59,6 +60,7 @@ class _FakeAlertService implements AlertService {
 
 void main() {
   late InMemoryPackageRepository packages;
+  late InMemoryQuotaCategoryRepository categories;
   late InMemoryUsageRepository usage;
 
   DataPackage pkg(String uid, {bool active = true}) {
@@ -77,11 +79,12 @@ void main() {
     );
   }
 
-  DashboardProvider build({required bool granted}) {
+  DashboardProvider build({required bool granted, int totalBytes = 0}) {
     return DashboardProvider(
       packages,
+      categories,
       usage,
-      _FakeUsageService(granted),
+      _FakeUsageService(granted, totalBytes: totalBytes),
       _FakeAlertService(),
     );
   }
@@ -108,10 +111,103 @@ void main() {
     );
   }
 
+  DashboardProvider buildWithPlanner({required bool granted}) {
+    return DashboardProvider(
+      packages,
+      categories,
+      usage,
+      _FakeUsageService(granted),
+      _FakeAlertService(),
+      planner:
+          ({
+            required DataPackage package,
+            required int totalUsedBytes,
+            required int todayUsedBytes,
+            required DateTime today,
+          }) {
+            return PlannerResult(
+              status: PlannerStatus.normal,
+              totalBytes: package.advertisedTotalQuotaBytes,
+              usedBytes: totalUsedBytes,
+              remainingBytes:
+                  package.advertisedTotalQuotaBytes - totalUsedBytes,
+              remainingDays: 10,
+              dailyTargetBytes: 1000000000,
+              weeklyTargetBytes: 7000000000,
+              todayUsedBytes: todayUsedBytes,
+              usagePercent: 0,
+              todayPercentOfTarget: 0,
+            );
+          },
+    );
+  }
+
   setUp(() {
     packages = InMemoryPackageRepository();
-    usage = InMemoryUsageRepository(packages);
+    categories = InMemoryQuotaCategoryRepository(packages);
+    usage = InMemoryUsageRepository(packages, categories);
   });
+
+  test('memuat kategori paket dan sisa kategori dari repository', () async {
+    final id = await packages.add(pkg('uid_1'));
+    final main = (await categories.getByPackage(id)).single;
+    final now = DateTime.now();
+
+    await usage.upsertRecordWithAllocations(
+      UsageRecord(
+        packageId: id,
+        recordScope: UsageRecordScope.manualTotal,
+        networkType: NetworkType.mobile,
+        periodStartAt: dateOnly(now),
+        periodEndAt: now,
+        rxBytes: 500000000,
+        txBytes: 0,
+        source: UsageSource.manual,
+        recordedAt: now,
+      ),
+      (usageRecordId) => [
+        UsageAllocation(
+          packageId: id,
+          usageRecordId: usageRecordId,
+          quotaCategoryId: main.id,
+          allocatedBytes: 500000000,
+          allocationMethod: AllocationMethod.manualUser,
+          createdAt: now,
+        ),
+      ],
+    );
+
+    final dashboard = build(granted: false);
+
+    await dashboard.refresh('uid_1');
+
+    expect(dashboard.categories, hasLength(1));
+    expect(dashboard.categories.single.name, 'Kuota Utama');
+    expect(dashboard.categories.single.isMain, isTrue);
+    expect(dashboard.categories.single.usedBytes, 500000000);
+    expect(
+      dashboard.categories.single.remainingBytes,
+      25 * kBytesPerGBForTest - 500000000,
+    );
+    expect(dashboard.unallocatedBytes, 0);
+  });
+
+  test(
+    'pemakaian perangkat tanpa alokasi dihitung belum masuk kategori',
+    () async {
+      final id = await packages.add(pkg('uid_1'));
+
+      await addDeviceRecord(id, DateTime.now(), 500000000);
+
+      final dashboard = build(granted: false);
+
+      await dashboard.refresh('uid_1');
+
+      expect(dashboard.categories, hasLength(1));
+      expect(dashboard.categories.single.usedBytes, 0);
+      expect(dashboard.unallocatedBytes, 500000000);
+    },
+  );
 
   test('tanpa paket aktif menghasilkan noPackage', () async {
     final dashboard = build(granted: false);
@@ -199,6 +295,71 @@ void main() {
     expect(dashboard.package, isNotNull);
     expect(dashboard.plan, isNull);
     expect(dashboard.planUnavailable, isTrue);
+  });
+
+  test('statistik perangkat hari ini dipakai bila belum ada catatan', () async {
+    await packages.add(pkg('uid_1'));
+    final today = dateOnly(DateTime.now());
+
+    final dashboard = build(granted: true, totalBytes: 700000000);
+
+    await dashboard.refresh('uid_1');
+
+    expect(dashboard.dailyUsage[today], 700000000);
+    expect(dashboard.totalUsedBytes, 700000000);
+    expect(dashboard.categories.single.usedBytes, 0);
+    expect(dashboard.unallocatedBytes, 700000000);
+  });
+
+  test('catatan manual hari ini menang atas statistik perangkat', () async {
+    final id = await packages.add(pkg('uid_1'));
+    final main = (await categories.getByPackage(id)).single;
+    final now = DateTime.now();
+
+    await usage.upsertRecordWithAllocations(
+      UsageRecord(
+        packageId: id,
+        recordScope: UsageRecordScope.manualTotal,
+        networkType: NetworkType.mobile,
+        periodStartAt: dateOnly(now),
+        periodEndAt: now,
+        rxBytes: 300000000,
+        txBytes: 0,
+        source: UsageSource.manual,
+        recordedAt: now,
+      ),
+      (usageRecordId) => [
+        UsageAllocation(
+          packageId: id,
+          usageRecordId: usageRecordId,
+          quotaCategoryId: main.id,
+          allocatedBytes: 300000000,
+          allocationMethod: AllocationMethod.manualUser,
+          createdAt: now,
+        ),
+      ],
+    );
+
+    final dashboard = build(granted: true, totalBytes: 700000000);
+
+    await dashboard.refresh('uid_1');
+
+    expect(dashboard.dailyUsage[dateOnly(now)], 300000000);
+    expect(dashboard.totalUsedBytes, 300000000);
+    expect(dashboard.unallocatedBytes, 0);
+  });
+
+  test('planner yang tersedia mengisi target harian dan mingguan', () async {
+    await packages.add(pkg('uid_1'));
+
+    final dashboard = buildWithPlanner(granted: true);
+
+    await dashboard.refresh('uid_1');
+
+    expect(dashboard.planUnavailable, isFalse);
+    expect(dashboard.plan, isNotNull);
+    expect(dashboard.plan?.dailyTargetBytes, 1000000000);
+    expect(dashboard.plan?.weeklyTargetBytes, 7000000000);
   });
 
   test('izin belum diberikan tidak menghasilkan waktu pembaruan', () async {

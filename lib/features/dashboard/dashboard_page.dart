@@ -105,6 +105,7 @@ class _DashView {
     this.overQuota = false,
     this.planUnavailable = false,
     this.categoriesComplete = false,
+    this.unallocatedText,
   });
 
   final String userName, operatorName, packageTitle;
@@ -125,6 +126,9 @@ class _DashView {
   final bool overQuota;
   final bool planUnavailable;
   final bool categoriesComplete;
+
+  /// Keterangan pemakaian efektif yang belum memiliki alokasi kategori.
+  final String? unallocatedText;
 
   /// Data contoh pekan 1 — sama dengan frame Figma.
   factory _DashView.mock() {
@@ -264,11 +268,14 @@ class _DashView {
       targetText: dailyTarget != null ? _gb(dailyTarget) : '—',
       averageText: _gb(weekUsed / 7),
       tooltip: _gb(days.last.bytes),
-      // Provider saat ini hanya mengekspos paket dan total penggunaan.
-      // UI tidak mengambil QuotaCategory/Allocation langsung karena kontrak Provider
-      // tidak boleh diubah dan UI tidak boleh mengakses Repository/Service.
-      categories: [_Cat('Kuota Utama', used, total)],
-      categoriesComplete: false,
+      // Kategori dan sisa per kategori berasal dari repository lewat provider.
+      categories: [
+        for (final c in d.categories) _Cat(c.name, c.usedBytes, c.capacityBytes),
+      ],
+      categoriesComplete: d.categories.isNotEmpty,
+      unallocatedText: d.unallocatedBytes > 0
+          ? '${_gb(d.unallocatedBytes)} pemakaian belum masuk kategori.'
+          : null,
       planUnavailable: d.planUnavailable,
       packageForNav: pkg,
       overQuota: plan != null && plan.usedBytes > plan.totalBytes,
@@ -384,11 +391,14 @@ class _DashboardPageState extends State<DashboardPage>
           SizedBox(height: _u(12)),
           _PackageCard(
             v: v,
-            onTap: () => Navigator.pushNamed(
-              context,
-              Routes.packageDetail,
-              arguments: v.packageForNav.id,
-            ),
+            onTap: () async {
+              await Navigator.pushNamed(
+                context,
+                Routes.packageDetail,
+                arguments: v.packageForNav.id,
+              );
+              if (mounted) await _load();
+            },
           ),
           if (!preview && !d.hasPermission) ...[
             SizedBox(height: _u(8)),
@@ -415,11 +425,14 @@ class _DashboardPageState extends State<DashboardPage>
           SizedBox(height: _u(12)),
           _PrimaryButton(
             label: 'Masukkan Pemakaian',
-            onTap: () => Navigator.pushNamed(
-              context,
-              Routes.usageManual,
-              arguments: v.packageForNav,
-            ),
+            onTap: () async {
+              await Navigator.pushNamed(
+                context,
+                Routes.usageManual,
+                arguments: v.packageForNav,
+              );
+              if (mounted) await _load();
+            },
           ),
           SizedBox(height: _u(8)),
           Row(
@@ -436,7 +449,10 @@ class _DashboardPageState extends State<DashboardPage>
                 child: _SecondaryButton(
                   icon: Icons.shopping_cart_checkout_rounded,
                   label: 'Beli Paket Ekstra',
-                  onTap: () => Navigator.pushNamed(context, Routes.packageForm),
+                  onTap: () async {
+                    await Navigator.pushNamed(context, Routes.packageForm);
+                    if (mounted) await _load();
+                  },
                 ),
               ),
             ],
@@ -1399,7 +1415,15 @@ class _CategoryCard extends StatelessWidget {
             Padding(
               padding: EdgeInsets.only(top: _u(2)),
               child: Text(
-                'Rincian kategori tambahan belum tersedia dari data Dashboard saat ini.',
+                'Rincian kategori belum tersedia dari repository.',
+                style: TextStyle(color: _muted, fontSize: _u(7.5)),
+              ),
+            )
+          else if (v.unallocatedText != null)
+            Padding(
+              padding: EdgeInsets.only(top: _u(2)),
+              child: Text(
+                v.unallocatedText!,
                 style: TextStyle(color: _muted, fontSize: _u(7.5)),
               ),
             ),
