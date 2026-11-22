@@ -124,10 +124,21 @@ class RegisterPage extends StatelessWidget {
 
                                       auth.clearError();
 
-                                      await auth.register(
+                                      final success =
+                                          await auth.register(
                                         email,
                                         password,
                                       );
+
+                                      // Jika registrasi berhasil,
+                                      // langsung menuju halaman utama.
+                                      if (success && context.mounted) {
+                                        Navigator.pushNamedAndRemoveUntil(
+                                          context,
+                                          '/',
+                                          (route) => false,
+                                        );
+                                      }
                                     }
                                   },
                             child: auth.isLoading
