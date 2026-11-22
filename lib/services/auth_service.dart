@@ -139,6 +139,10 @@ class FirebaseAuthService implements AuthService {
 
   @override
   Future<void> logout() async {
-    await _auth.signOut();
+    try {
+      await _auth.signOut();
+    } on FirebaseAuthException catch (e) {
+      throw mapFirebaseAuthException(e);
+    }
   }
 }
