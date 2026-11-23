@@ -134,15 +134,34 @@ void main() {
       expect(provider.errorMessage, isNull);
     });
 
-    test('hasil pembacaan agregat perangkat tidak disimpan sebagai pemakaian paket', () async {
+    test('hasil pembacaan agregat perangkat disimpan sebagai DEVICE_TOTAL tanpa alokasi', () async {
       final package = await createActivePackage();
 
       await provider.refresh(package);
 
       final records = await usageRepo.getRecords(package.id!);
 
-      expect(records, isEmpty);
+      expect(records.length, 1);
+      expect(records.single.recordScope, UsageRecordScope.deviceTotal);
+      expect(records.single.source, UsageSource.android);
+      expect(records.single.packageId, package.id);
+      expect(records.single.totalBytes, 1000);
+
+      // Agregat perangkat tidak boleh dialokasikan ke kategori mana pun.
+      expect(await usageRepo.getAllocations(records.single.id!), isEmpty);
       expect(provider.lastReading!.totalBytes, 1000);
+    });
+
+    test('pembacaan berulang tidak membuat catatan ganda', () async {
+      final package = await createActivePackage();
+
+      await provider.refresh(package);
+      await provider.refresh(package);
+
+      final records = await usageRepo.getRecords(package.id!);
+
+      expect(records.length, 1);
+      expect(records.single.totalBytes, 1000);
     });
 
     test('gagal membaca penggunaan data', () async {

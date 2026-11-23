@@ -95,6 +95,7 @@ class _DashView {
     required this.tooltip,
     required this.packageForNav,
     this.categories = const [],
+    this.unclassifiedBytes = 0,
     this.overQuota = false,
     this.planUnavailable = false,
     this.categoriesComplete = false,
@@ -115,6 +116,7 @@ class _DashView {
   final String targetText, averageText, tooltip;
   final DataPackage packageForNav;
   final List<_Cat> categories;
+  final int unclassifiedBytes;
   final bool overQuota;
   final bool planUnavailable;
   final bool categoriesComplete;
@@ -257,11 +259,15 @@ class _DashView {
       targetText: dailyTarget != null ? _gb(dailyTarget) : '—',
       averageText: _gb(weekUsed / 7),
       tooltip: _gb(days.last.bytes),
-      // Provider saat ini hanya mengekspos paket dan total penggunaan.
-      // UI tidak mengambil QuotaCategory/Allocation langsung karena kontrak Provider
-      // tidak boleh diubah dan UI tidak boleh mengakses Repository/Service.
-      categories: [_Cat('Kuota Utama', used, total)],
-      categoriesComplete: false,
+      // Kapasitas dan pemakaian kategori berasal dari repository lewat Provider.
+      // Pemakaian yang belum terklasifikasi tetap ditampilkan terpisah dan tidak
+      // dibebankan ke kategori mana pun.
+      categories: [
+        for (final c in d.categoryUsage)
+          _Cat(c.category.categoryName, c.usedBytes, c.capacityBytes),
+      ],
+      unclassifiedBytes: d.unclassifiedBytes,
+      categoriesComplete: true,
       planUnavailable: d.planUnavailable,
       packageForNav: pkg,
       overQuota: plan != null && plan.usedBytes > plan.totalBytes,
@@ -599,6 +605,12 @@ class _DashboardPageState extends State<DashboardPage>
           'bukan catatan resmi operator.';
     } else {
       detail = 'Belum pernah diperbarui.';
+    }
+    if (!preview && d.dataLimit.isConfigured) {
+      detail +=
+          '\n\nBatas harian: ${_gb(d.dataLimit.limitBytes)} · terpakai '
+          '${_gb(d.dataLimit.usedBytes)} '
+          '(${d.dataLimit.percent.toStringAsFixed(0)}%).';
     }
     showDialog<void>(
       context: context,
@@ -1428,6 +1440,33 @@ class _CategoryCard extends StatelessWidget {
                 backgroundColor: pal.line,
                 valueColor: AlwaysStoppedAnimation(pal.primaryDeep),
               ),
+            ),
+            SizedBox(height: _u(8)),
+          ],
+          if (v.unclassifiedBytes > 0) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Belum terklasifikasi',
+                    style: TextStyle(color: pal.muted, fontSize: _u(8.5)),
+                  ),
+                ),
+                Text(
+                  _gb(v.unclassifiedBytes),
+                  style: TextStyle(
+                    color: pal.ink,
+                    fontSize: _u(8),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: _u(2)),
+            Text(
+              'Pemakaian dari statistik perangkat belum dapat dipisahkan per '
+              'aplikasi, sehingga tidak dibebankan ke kategori mana pun.',
+              style: TextStyle(color: pal.muted, fontSize: _u(7.5)),
             ),
             SizedBox(height: _u(8)),
           ],

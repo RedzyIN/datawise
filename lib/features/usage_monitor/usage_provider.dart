@@ -3,13 +3,16 @@ import 'package:flutter/foundation.dart';
 import '../../models/models.dart';
 import '../../repositories/repositories.dart';
 import '../../services/usage_service.dart';
+import '../../services/usage_sync_service.dart';
 
 class UsageProvider extends ChangeNotifier {
-  UsageProvider(this._service, this._usageRepo, this._categoryRepo);
+  UsageProvider(this._service, this._usageRepo, this._categoryRepo)
+    : _sync = UsageSyncServiceImpl(_service, _usageRepo);
 
   final UsageService _service;
   final UsageRepository _usageRepo;
   final QuotaCategoryRepository _categoryRepo;
+  final UsageSyncService _sync;
 
   bool _hasPermission = false;
   bool _isLoading = false;
@@ -54,15 +57,19 @@ class UsageProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final reading = await _service.refreshToday(package);
+      // Hasil pembacaan Android langsung disimpan ke SQLite sebagai agregat
+      // perangkat (DEVICE_TOTAL). Pembacaan ulang pada hari yang sama
+      // memperbarui catatan yang sama, bukan menambah baris baru.
+      final result = await _sync.syncToday(package);
+      final reading = result.reading;
 
       _lastReading = reading;
 
-      if (reading.status == UsageReadStatus.ok) {
-        _lastRefresh = reading.end;
+      if (result.saved) {
+        _lastRefresh = reading?.end;
         _errorMessage = null;
       } else {
-        _errorMessage = reading.message ?? 'Gagal membaca penggunaan internet.';
+        _errorMessage = result.message ?? 'Gagal membaca penggunaan internet.';
       }
     } catch (e) {
       _handleError(e);
