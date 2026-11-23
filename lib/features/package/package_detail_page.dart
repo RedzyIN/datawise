@@ -21,6 +21,7 @@ class PackageDetailPage extends StatefulWidget {
 class _PackageDetailPageState extends State<PackageDetailPage> {
   String? _packageId;
   String? _categoriesLoadedFor;
+  String? _usageLoadedFor;
 
   @override
   void didChangeDependencies() {
@@ -37,6 +38,18 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
 
   Future<void> _editPackage(DataPackage package) async {
     await Navigator.pushNamed(context, Routes.packageForm, arguments: package);
+  }
+
+  /// Memuat pemakaian paket sekali saat halaman dibuka langsung.
+  void _ensureUsage(DataPackage package) {
+    final packageId = package.id;
+    if (packageId == null || _usageLoadedFor == packageId) return;
+    _usageLoadedFor = packageId;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<PackageProvider>().loadUsageFor(package);
+    });
   }
 
   /// Memuat kategori kuota sekali untuk paket yang sedang dibuka.
@@ -525,6 +538,7 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
         }
 
         _ensureCategories(package.id!);
+        _ensureUsage(package);
 
         final expired = package.isExpiredAt();
         final archived = package.isArchived;
@@ -533,6 +547,16 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
         final frac = timeLeftFraction(package);
         final pct = (frac * 100).round();
         final (value, unit) = splitBytes(package.advertisedTotalQuotaBytes);
+
+        final totalBytes = package.advertisedTotalQuotaBytes;
+        final usedBytes = provider.usedBytesFor(package.id);
+        final remainingBytes = provider.remainingBytesFor(package);
+        final usageRatio = totalBytes <= 0
+            ? 0.0
+            : (usedBytes / totalBytes).clamp(0.0, 1.0);
+        final usagePercent = totalBytes <= 0
+            ? 0
+            : (usedBytes * 100 / totalBytes).round();
 
         return Scaffold(
           backgroundColor: PkgPalette.of(context).bg,
@@ -729,6 +753,60 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
                     const SizedBox(height: 12),
                     Row(
                       children: [
+                        Text(
+                          'Pemakaian kuota',
+                          style: TextStyle(
+                            color: PkgPalette.of(context).muted,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '$usagePercent%',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                            color: PkgPalette.of(context).primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: usageRatio,
+                        minHeight: 7,
+                        backgroundColor: PkgPalette.of(context).chip,
+                        color: PkgPalette.of(context).primary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Terpakai ${formatBytes(usedBytes)}',
+                            style: TextStyle(
+                              color: PkgPalette.of(context).text,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          'Sisa ${formatBytes(remainingBytes)}',
+                          style: TextStyle(
+                            color: PkgPalette.of(context).muted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
                         Icon(
                           Icons.event_available,
                           size: 20,
@@ -813,12 +891,22 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
                       PkgStatusPill.labelOf(package),
                     ),
                     Divider(height: 1, color: PkgPalette.of(context).chip),
-                    _infoRow(Icons.show_chart, 'Pemakaian', 'Belum tersedia'),
+                    _infoRow(
+                      Icons.show_chart,
+                      'Pemakaian',
+                      formatBytes(usedBytes),
+                    ),
                     Divider(height: 1, color: PkgPalette.of(context).chip),
                     _infoRow(
                       Icons.pie_chart_outline,
                       'Sisa Kuota',
-                      'Belum tersedia',
+                      formatBytes(remainingBytes),
+                    ),
+                    Divider(height: 1, color: PkgPalette.of(context).chip),
+                    _infoRow(
+                      Icons.percent,
+                      'Persentase Penggunaan',
+                      '$usagePercent%',
                     ),
                   ],
                 ),

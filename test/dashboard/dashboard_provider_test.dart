@@ -90,13 +90,18 @@ void main() {
     );
   }
 
-  DashboardProvider build({required bool granted, int totalBytes = 0}) {
+  DashboardProvider build({
+    required bool granted,
+    int totalBytes = 0,
+    DashboardPlanner? planner,
+  }) {
     return DashboardProvider(
       packages,
       usage,
       _FakeUsageService(granted, totalBytes: totalBytes),
       _FakeAlertService(),
       categoryRepo: categories,
+      planner: planner,
     );
   }
 
@@ -308,10 +313,18 @@ void main() {
     dashboard.dispose();
   });
 
-  test('PlannerService belum selesai tetapi Dashboard tetap ready', () async {
+  test('planner yang gagal membuat Dashboard tetap ready', () async {
     await packages.add(pkg('uid_1'));
 
-    final dashboard = build(granted: true);
+    final dashboard = build(
+      granted: true,
+      planner: ({
+        required DataPackage package,
+        required int totalUsedBytes,
+        required int todayUsedBytes,
+        required DateTime today,
+      }) => throw UnimplementedError('planner gagal'),
+    );
 
     await dashboard.refresh('uid_1');
 
@@ -410,6 +423,73 @@ void main() {
 
     dashboard.dispose();
   });
+
+  test(
+    'planner bawaan menghitung target dari sisa kuota dan sisa hari',
+    () async {
+      final id = await packages.add(pkg('uid_1'));
+
+      await addDeviceRecord(id, DateTime.now(), 1000000000);
+
+      final dashboard = build(granted: false);
+
+      await dashboard.refresh('uid_1');
+
+      expect(dashboard.planUnavailable, isFalse);
+      expect(dashboard.plan, isNotNull);
+      expect(dashboard.plan!.dailyTargetBytes, greaterThan(0));
+      expect(dashboard.plan!.weeklyTargetBytes, greaterThan(0));
+      expect(dashboard.plan!.todayPercentOfTarget, isNotNull);
+      expect(dashboard.plan!.usedBytes, 1000000000);
+
+      dashboard.dispose();
+    },
+  );
+
+  test(
+    'alokasi UNCLASSIFIED tidak dihitung sebagai pemakaian kategori',
+    () async {
+      final id = await packages.add(pkg('uid_1'));
+      final now = DateTime.now();
+      final start = dateOnly(now);
+
+      await usage.upsertRecordWithAllocations(
+        UsageRecord(
+          packageId: id,
+          recordScope: UsageRecordScope.appUsage,
+          appUid: 10001,
+          appPackageName: 'com.example.app',
+          appName: 'Contoh',
+          networkType: NetworkType.mobile,
+          periodStartAt: start,
+          periodEndAt: start.add(const Duration(hours: 1)),
+          rxBytes: 300000000,
+          txBytes: 0,
+          source: UsageSource.android,
+          recordedAt: now,
+        ),
+        (usageRecordId) => [
+          UsageAllocation(
+            packageId: id,
+            usageRecordId: usageRecordId,
+            allocatedBytes: 300000000,
+            allocationMethod: AllocationMethod.unclassified,
+            createdAt: now,
+          ),
+        ],
+      );
+
+      final dashboard = build(granted: false);
+
+      await dashboard.refresh('uid_1');
+
+      expect(dashboard.categoryUsage.single.usedBytes, 0);
+      expect(dashboard.unclassifiedBytes, 300000000);
+      expect(dashboard.totalUsedBytes, 300000000);
+
+      dashboard.dispose();
+    },
+  );
 }
 
 const int kBytesPerGBForTest = 1000000000;

@@ -10,6 +10,7 @@ import '../../services/data_limit_service.dart';
 import '../../services/planner_service.dart';
 import '../../services/usage_service.dart';
 import '../../services/usage_sync_service.dart';
+import '../../services/usage_totals.dart';
 
 enum DashboardLoad { loading, ready, noPackage, error }
 
@@ -106,52 +107,7 @@ class DashboardProvider extends ChangeNotifier {
   Map<DateTime, List<UsageRecord>> _buildEffectiveRecords(
     List<UsageRecord> sourceRecords,
   ) {
-    final grouped = <DateTime, List<UsageRecord>>{};
-
-    for (final record in sourceRecords) {
-      if (record.networkType == NetworkType.wifi) continue;
-
-      final day = dateOnly(record.periodStartAt);
-      grouped.putIfAbsent(day, () => []).add(record);
-    }
-
-    final result = <DateTime, List<UsageRecord>>{};
-
-    for (final entry in grouped.entries) {
-      final dayRecords = entry.value;
-
-      final manualRecords = dayRecords.where(
-        (record) =>
-            record.source == UsageSource.manual &&
-            record.recordScope == UsageRecordScope.manualTotal,
-      );
-
-      final deviceRecords = dayRecords.where(
-        (record) =>
-            record.source == UsageSource.android &&
-            record.recordScope == UsageRecordScope.deviceTotal,
-      );
-
-      final appRecords = dayRecords.where(
-        (record) =>
-            record.source == UsageSource.android &&
-            record.recordScope == UsageRecordScope.appUsage,
-      );
-
-      final Iterable<UsageRecord> selectedRecords;
-
-      if (manualRecords.isNotEmpty) {
-        selectedRecords = manualRecords;
-      } else if (deviceRecords.isNotEmpty) {
-        selectedRecords = deviceRecords;
-      } else {
-        selectedRecords = appRecords;
-      }
-
-      result[entry.key] = selectedRecords.toList();
-    }
-
-    return result;
+    return effectiveUsageRecordsByDay(sourceRecords);
   }
 
   void _resetForNoPackage() {
@@ -292,21 +248,25 @@ class DashboardProvider extends ChangeNotifier {
           continue;
         }
 
-        allocatedByRecord.update(
-          allocation.usageRecordId,
-          (value) => value + allocation.allocatedBytes,
-          ifAbsent: () => allocation.allocatedBytes,
-        );
-
         final categoryId = allocation.quotaCategoryId;
 
         if (categoryId != null) {
+          allocatedByRecord.update(
+            allocation.usageRecordId,
+            (value) => value + allocation.allocatedBytes,
+            ifAbsent: () => allocation.allocatedBytes,
+          );
+
           allocatedByCategory.update(
             categoryId,
             (value) => value + allocation.allocatedBytes,
             ifAbsent: () => allocation.allocatedBytes,
           );
         }
+
+        // Alokasi UNCLASSIFIED (quota_category_id null) sengaja tidak
+        // dihitung sebagai pemakaian kategori. Byte-nya tetap muncul pada
+        // bagian "belum terklasifikasi" di bawah.
       }
 
       // Bentuk ringkasan kategori untuk Dashboard.
