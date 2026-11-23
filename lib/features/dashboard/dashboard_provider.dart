@@ -1,4 +1,5 @@
-// PEMILIK: Anggota D. Menggabungkan paket + pemakaian + kategori + planner.
+// PEMILIK: Anggota D. Menggabungkan paket, pemakaian, kategori, planner, dan alert.
+
 import 'package:flutter/foundation.dart';
 
 import '../../models/models.dart';
@@ -11,8 +12,15 @@ import '../../services/usage_sync_service.dart';
 
 enum DashboardLoad { loading, ready, noPackage, error }
 
-/// Pemakaian satu kategori kuota: kapasitas dari database, pemakaian dari
-/// alokasi yang benar-benar tersimpan.
+/// Fungsi planner dapat diganti saat pengujian.
+typedef DashboardPlanner = PlannerResult Function({
+  required DataPackage package,
+  required int totalUsedBytes,
+  required int todayUsedBytes,
+  required DateTime today,
+});
+
+/// Pemakaian satu kategori kuota.
 class CategoryUsage {
   const CategoryUsage({required this.category, required this.usedBytes});
 
@@ -36,31 +44,30 @@ class DashboardProvider extends ChangeNotifier {
     this.categoryRepo,
     this.dataLimitRepo,
     UsageSyncService? syncService,
+    DashboardPlanner? planner,
   }) : _usageRepo = usageRepo,
        _usageService = usageService,
-       _sync = syncService ?? UsageSyncServiceImpl(usageService, usageRepo);
+       _sync = syncService ?? UsageSyncServiceImpl(usageService, usageRepo),
+       _planner = planner ?? PlannerService.calculate;
 
   final PackageRepository _packageRepo;
   final UsageRepository _usageRepo;
   final UsageService _usageService;
   final AlertService _alertService;
+
   final QuotaCategoryRepository? categoryRepo;
   final DataLimitRepository? dataLimitRepo;
+
   final UsageSyncService _sync;
+  final DashboardPlanner _planner;
 
   DashboardLoad loadState = DashboardLoad.loading;
+
   DataPackage? package;
   PlannerResult? plan;
   List<UsageRecord> records = const [];
 
-  /// Kategori kuota paket aktif beserta pemakaian hasil alokasi.
   List<CategoryUsage> categoryUsage = const [];
-
-  /// Pemakaian yang tersimpan tetapi belum/tidak dapat dialokasikan ke kategori.
-  ///
-  /// Agregat perangkat (DEVICE_TOTAL) memang tidak dialokasikan karena Android
-  /// tidak memberi rincian per aplikasi, jadi angkanya tetap dihitung di sini
-  /// dan tidak disamarkan ke kategori mana pun.
   int unclassifiedBytes = 0;
 
   DataLimitStatus dataLimit = DataLimitStatus.none;
@@ -69,25 +76,27 @@ class DashboardProvider extends ChangeNotifier {
   String? errorMessage;
 
   int totalUsedBytes = 0;
+
   bool hasPermission = false;
   UsageReading? lastReading;
   UsageSyncResult? lastSync;
   String? syncMessage;
   DateTime? lastUpdatedAt;
+
   bool planUnavailable = false;
 
   int _generation = 0;
   bool _notifPermissionAsked = false;
   bool _disposed = false;
 
-  /// Memilih satu sumber penggunaan efektif untuk setiap tanggal.
+  /// Memilih satu sumber pemakaian efektif untuk setiap tanggal.
   ///
   /// Prioritas:
-  /// 1. MANUAL_TOTAL jika tersedia.
-  /// 2. DEVICE_TOTAL jika tersedia.
-  /// 3. APP_USAGE jika DEVICE_TOTAL tidak tersedia.
+  /// 1. MANUAL_TOTAL.
+  /// 2. DEVICE_TOTAL.
+  /// 3. APP_USAGE.
   ///
-  /// DEVICE_TOTAL dan APP_USAGE tidak pernah dijumlahkan bersamaan.
+  /// DEVICE_TOTAL dan APP_USAGE tidak dijumlahkan bersamaan.
   Map<DateTime, List<UsageRecord>> _buildEffectiveRecords(
     List<UsageRecord> sourceRecords,
   ) {
@@ -143,16 +152,21 @@ class DashboardProvider extends ChangeNotifier {
     package = null;
     plan = null;
     records = const [];
+
     categoryUsage = const [];
     unclassifiedBytes = 0;
     dataLimit = DataLimitStatus.none;
+
     dailyUsage = const {};
     totalUsedBytes = 0;
+
     planUnavailable = false;
     errorMessage = null;
-    syncMessage = null;
-    lastSync = null;
+
     lastReading = null;
+    lastSync = null;
+    syncMessage = null;
+    lastUpdatedAt = null;
   }
 
   Future<void> refresh(String userId) async {
@@ -165,12 +179,14 @@ class DashboardProvider extends ChangeNotifier {
 
     try {
       final active = await _packageRepo.getActive(userId);
+
       if (gen != _generation) return;
 
       if (active == null || active.id == null) {
         _resetForNoPackage();
 
         hasPermission = await _usageService.hasPermission();
+
         if (gen != _generation) return;
 
         loadState = DashboardLoad.noPackage;
@@ -185,16 +201,20 @@ class DashboardProvider extends ChangeNotifier {
 
         try {
           await _alertService.requestPermission();
-        } catch (_) {}
+        } catch (_) {
+          // Kegagalan izin notifikasi tidak boleh menggagalkan Dashboard.
+        }
       }
 
       hasPermission = await _usageService.hasPermission();
+
       if (gen != _generation) return;
 
       if (hasPermission) {
-        // Pembacaan Android disimpan/diperbarui ke SQLite sebelum Dashboard
-        // membaca ulang. Angka di layar selalu berasal dari repository.
+        // Sinkronisasi statistik Android ke SQLite.
+        // Dashboard membaca data dari repository setelah sinkronisasi.
         final sync = await _sync.syncToday(active);
+
         if (gen != _generation) return;
 
         lastSync = sync;
@@ -213,23 +233,30 @@ class DashboardProvider extends ChangeNotifier {
       final today = dateOnly(DateTime.now());
 
       final loadedRecords = await _usageRepo.getRecords(packageId);
+
       if (gen != _generation) return;
 
       final allocations = await _usageRepo.getAllocationsByPackage(packageId);
+
       if (gen != _generation) return;
 
       final categorySource = categoryRepo;
-      final categories = categorySource == null
+      final loadedCategories = categorySource == null
           ? const <QuotaCategory>[]
           : await categorySource.getByPackage(packageId);
+
       if (gen != _generation) return;
 
       final limitSetting = await dataLimitRepo?.getByPackage(packageId);
+
       if (gen != _generation) return;
 
-      final effective = _buildEffectiveRecords(loadedRecords);
-      final loadedDaily = {
-        for (final entry in effective.entries)
+      // Pilih sumber pemakaian efektif untuk setiap tanggal.
+      final effectiveRecords = _buildEffectiveRecords(loadedRecords);
+
+      // Hitung pemakaian harian dari catatan efektif.
+      final loadedDaily = <DateTime, int>{
+        for (final entry in effectiveRecords.entries)
           entry.key: entry.value.fold<int>(
             0,
             (sum, record) => sum + record.totalBytes,
@@ -243,49 +270,73 @@ class DashboardProvider extends ChangeNotifier {
 
       final todayUsed = loadedDaily[today] ?? 0;
 
+      // Simpan ID catatan yang benar-benar digunakan dalam perhitungan.
+      final effectiveRecordIds = <String>{
+        for (final dayRecords in effectiveRecords.values)
+          for (final record in dayRecords)
+            if (record.id != null) record.id!,
+      };
+
+      // Hitung alokasi hanya dari catatan pemakaian efektif.
       final allocatedByCategory = <String, int>{};
       final allocatedByRecord = <String, int>{};
 
       for (final allocation in allocations) {
-        allocatedByRecord[allocation.usageRecordId] =
-            (allocatedByRecord[allocation.usageRecordId] ?? 0) +
-            allocation.allocatedBytes;
+        if (!effectiveRecordIds.contains(allocation.usageRecordId)) {
+          continue;
+        }
+
+        allocatedByRecord.update(
+          allocation.usageRecordId,
+          (value) => value + allocation.allocatedBytes,
+          ifAbsent: () => allocation.allocatedBytes,
+        );
 
         final categoryId = allocation.quotaCategoryId;
+
         if (categoryId != null) {
-          allocatedByCategory[categoryId] =
-              (allocatedByCategory[categoryId] ?? 0) +
-              allocation.allocatedBytes;
+          allocatedByCategory.update(
+            categoryId,
+            (value) => value + allocation.allocatedBytes,
+            ifAbsent: () => allocation.allocatedBytes,
+          );
         }
       }
 
-      var unallocated = 0;
-      for (final dayRecords in effective.values) {
-        for (final record in dayRecords) {
-          final allocated = record.id == null
-              ? 0
-              : (allocatedByRecord[record.id!] ?? 0);
-          final remainder = record.totalBytes - allocated;
-
-          if (remainder > 0) unallocated += remainder;
-        }
-      }
-
+      // Bentuk ringkasan kategori untuk Dashboard.
       final loadedCategoryUsage = [
-        for (final category in categories)
+        for (final category in loadedCategories)
           CategoryUsage(
             category: category,
             usedBytes: category.id == null
                 ? 0
-                : (allocatedByCategory[category.id!] ?? 0),
+                : allocatedByCategory[category.id!] ?? 0,
           ),
       ];
 
-      PlannerResult? result;
+      // Hitung pemakaian yang belum dialokasikan ke kategori.
+      var unallocated = 0;
+
+      for (final dayRecords in effectiveRecords.values) {
+        for (final record in dayRecords) {
+          final allocated = record.id == null
+              ? 0
+              : allocatedByRecord[record.id!] ?? 0;
+
+          final remainder = record.totalBytes - allocated;
+
+          if (remainder > 0) {
+            unallocated += remainder;
+          }
+        }
+      }
+
+      // Hitung planner.
+      PlannerResult? plannerResult;
       var unavailable = false;
 
       try {
-        result = PlannerService.calculate(
+        plannerResult = _planner(
           package: active,
           totalUsedBytes: totalUsed,
           todayUsedBytes: todayUsed,
@@ -297,25 +348,37 @@ class DashboardProvider extends ChangeNotifier {
         unavailable = true;
       }
 
-      if (result != null) {
+      // Evaluasi alert jika planner berhasil.
+      if (plannerResult != null) {
         try {
-          await _alertService.evaluateAndNotify(userId, active, result);
+          await _alertService.evaluateAndNotify(userId, active, plannerResult);
         } catch (_) {
-          // Kegagalan notifikasi tidak boleh merusak Dashboard.
+          // Kegagalan alert tidak boleh merusak Dashboard.
         }
       }
 
       if (gen != _generation) return;
 
+      // Evaluasi batas penggunaan harian.
+      final loadedDataLimit = DataLimitService.evaluate(
+        limitSetting,
+        todayUsed,
+      );
+
+      // Perbarui seluruh state setelah proses pemuatan selesai.
       package = active;
       records = loadedRecords;
+
       categoryUsage = loadedCategoryUsage;
       unclassifiedBytes = unallocated;
-      dataLimit = DataLimitService.evaluate(limitSetting, todayUsed);
+
+      dataLimit = loadedDataLimit;
       dailyUsage = loadedDaily;
       totalUsedBytes = totalUsed;
-      plan = result;
+
+      plan = plannerResult;
       planUnavailable = unavailable;
+
       errorMessage = null;
       loadState = DashboardLoad.ready;
 
@@ -325,12 +388,14 @@ class DashboardProvider extends ChangeNotifier {
 
       errorMessage = e.message;
       loadState = DashboardLoad.error;
+
       _notify();
     } catch (_) {
       if (gen != _generation) return;
 
       errorMessage = 'Terjadi kesalahan saat memuat Dashboard.';
       loadState = DashboardLoad.error;
+
       _notify();
     }
   }
@@ -344,11 +409,14 @@ class DashboardProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> openUsageAccessSettings() =>
-      _usageService.openUsageAccessSettings();
+  Future<void> openUsageAccessSettings() {
+    return _usageService.openUsageAccessSettings();
+  }
 
   void _notify() {
-    if (!_disposed) notifyListeners();
+    if (!_disposed) {
+      notifyListeners();
+    }
   }
 
   @override

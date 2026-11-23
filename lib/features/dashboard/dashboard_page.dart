@@ -99,7 +99,7 @@ class _DashView {
     this.overQuota = false,
     this.planUnavailable = false,
     this.categoriesComplete = false,
-  });
+  }) : unallocatedText = null;
 
   final String userName, operatorName, packageTitle;
   final bool connected;
@@ -120,6 +120,9 @@ class _DashView {
   final bool overQuota;
   final bool planUnavailable;
   final bool categoriesComplete;
+
+  /// Keterangan pemakaian efektif yang belum memiliki alokasi kategori.
+  final String? unallocatedText;
 
   /// Data contoh pekan 1 — sama dengan frame Figma.
   factory _DashView.mock() {
@@ -387,11 +390,14 @@ class _DashboardPageState extends State<DashboardPage>
           SizedBox(height: _u(12)),
           _PackageCard(
             v: v,
-            onTap: () => Navigator.pushNamed(
-              context,
-              Routes.packageDetail,
-              arguments: v.packageForNav.id,
-            ),
+            onTap: () async {
+              await Navigator.pushNamed(
+                context,
+                Routes.packageDetail,
+                arguments: v.packageForNav.id,
+              );
+              if (mounted) await _load();
+            },
           ),
           if (!preview && !d.hasPermission) ...[
             SizedBox(height: _u(8)),
@@ -418,11 +424,14 @@ class _DashboardPageState extends State<DashboardPage>
           SizedBox(height: _u(12)),
           _PrimaryButton(
             label: 'Masukkan Pemakaian',
-            onTap: () => Navigator.pushNamed(
-              context,
-              Routes.usageManual,
-              arguments: v.packageForNav,
-            ),
+            onTap: () async {
+              await Navigator.pushNamed(
+                context,
+                Routes.usageManual,
+                arguments: v.packageForNav,
+              );
+              if (mounted) await _load();
+            },
           ),
           SizedBox(height: _u(8)),
           SizedBox(
