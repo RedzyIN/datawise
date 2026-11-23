@@ -37,6 +37,14 @@ class DbHelper {
         await _createV3Schema(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
+        // Sebagian build lama sudah menulis skema v3 tanpa memperbarui
+        // PRAGMA user_version. Menjalankan migrasi v1/v2 pada database seperti
+        // itu akan gagal (tabel lama tidak ada) sehingga database tidak pernah
+        // bisa dibuka dan semua query ikut gagal. Deteksi skema lebih dulu,
+        // lalu cukup tandai versinya. sqflite menulis versi setelah callback
+        // onUpgrade selesai, jadi data pengguna tidak disentuh.
+        if (await _hasV3Schema(db)) return;
+
         if (oldVersion < 2) {
           await _migrateV1ToV2(db);
         }
@@ -46,6 +54,82 @@ class DbHelper {
         }
       },
     );
+  }
+
+  /// Apakah database sudah memakai skema v3?
+  ///
+  /// Ciri yang dipakai adalah kolom yang hanya ada pada v3, bukan sekadar
+  /// keberadaan tabel `data_packages` (tabel itu juga ada pada v1 dan v2).
+  static Future<bool> _hasV3Schema(DatabaseExecutor db) async {
+    if (!await _tableExists(db, 'users')) return false;
+    if (!await _tableExists(db, 'data_packages')) return false;
+
+    final columns = await db.rawQuery('PRAGMA table_info(data_packages)');
+    final names = columns.map((row) => row['name']).toSet();
+
+    return names.contains('package_name') &&
+        names.contains('advertised_total_quota_bytes') &&
+        names.contains('status');
+  }
+
+  static Future<bool> _tableExists(DatabaseExecutor db, String table) async {
+    final rows = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+      [table],
+    );
+
+    return rows.isNotEmpty;
+  }
+
+  /// Melepas index dan trigger milik sebuah tabel lama.
+  ///
+  /// SQLite tidak mengganti nama index/trigger saat tabelnya di-RENAME, padahal
+  /// skema v2 memakai kembali nama index/trigger v1. Tanpa pelepasan ini,
+  /// pembuatan skema v2 gagal (`... already exists`) dan database tidak pernah
+  /// bisa dibuka. Hanya objek skema yang dilepas; baris data tidak tersentuh.
+  static Future<void> _dropSchemaObjects(
+    DatabaseExecutor db,
+    String table,
+  ) async {
+    final objects = await db.rawQuery(
+      "SELECT type, name FROM sqlite_master "
+      "WHERE tbl_name = ? AND type IN ('index', 'trigger') "
+      "AND name NOT LIKE 'sqlite_autoindex%'",
+      [table],
+    );
+
+    for (final row in objects) {
+      final keyword = row['type'] == 'trigger' ? 'TRIGGER' : 'INDEX';
+      final name = (row['name'] as String).replaceAll('"', '""');
+      await db.execute('DROP $keyword IF EXISTS "$name"');
+    }
+  }
+
+  /// Seluruh tabel scaffold v1.
+  static const List<String> _v1Tables = [
+    'data_packages',
+    'quota_categories',
+    'usage_records',
+    'classification_rules',
+    'usage_allocations',
+    'data_limit_settings',
+    'user_settings',
+    'alert_logs',
+    'app_settings',
+  ];
+
+  /// Mengganti nama tabel lama hanya jika tabel tersebut memang ada.
+  /// Mengembalikan true jika tabel berhasil diganti nama.
+  static Future<bool> _renameIfExists(
+    DatabaseExecutor db,
+    String from,
+    String to,
+  ) async {
+    if (!await _tableExists(db, from)) return false;
+    if (await _tableExists(db, to)) return false;
+
+    await db.execute('ALTER TABLE $from RENAME TO $to');
+    return true;
   }
 
   static Future<void> _createV2Schema(DatabaseExecutor db) async {
@@ -62,41 +146,80 @@ class DbHelper {
   /// alert yang dikenal dipindahkan. Preferensi lama dan alert tak dikenal
   /// diarsipkan karena pemilik/arti datanya tidak bisa dipastikan.
   static Future<void> _migrateV1ToV2(DatabaseExecutor db) async {
-    await db.execute(
-      'ALTER TABLE data_packages RENAME TO legacy_data_packages',
+    // Index dan trigger scaffold v1 memakai nama yang sama dengan v2 dan tidak
+    // ikut berganti nama ketika tabelnya di-RENAME. Semuanya dilepas lebih dulu
+    // agar pembuatan skema v2 tidak gagal (lihat [_dropSchemaObjects]).
+    for (final table in _v1Tables) {
+      await _dropSchemaObjects(db, table);
+    }
+
+    // Database v1 awal memakai `app_settings`, tetapi beberapa build sempat
+    // membuat `user_settings` pada versi yang sama. Keduanya diperiksa agar
+    // migrasi tidak gagal hanya karena satu nama tabel berbeda.
+    final hasPackages = await _renameIfExists(
+      db,
+      'data_packages',
+      'legacy_data_packages',
     );
-    await db.execute(
-      'ALTER TABLE usage_records RENAME TO legacy_usage_records',
+    final hasUsage = await _renameIfExists(
+      db,
+      'usage_records',
+      'legacy_usage_records',
     );
-    await db.execute('ALTER TABLE alert_logs RENAME TO legacy_alert_logs');
-    await db.execute('ALTER TABLE app_settings RENAME TO legacy_app_settings');
+    final hasAlerts = await _renameIfExists(
+      db,
+      'alert_logs',
+      'legacy_alert_logs',
+    );
+
+    // Seluruh tabel v1 lain diarsipkan agar skema v2 bisa dibuat dan data lama
+    // tidak hilang. Isinya tidak lagi dipakai aplikasi.
+    await _renameIfExists(db, 'quota_categories', 'legacy_quota_categories');
+    await _renameIfExists(
+      db,
+      'classification_rules',
+      'legacy_classification_rules',
+    );
+    await _renameIfExists(db, 'usage_allocations', 'legacy_usage_allocations');
+    await _renameIfExists(
+      db,
+      'data_limit_settings',
+      'legacy_data_limit_settings',
+    );
+    await _renameIfExists(db, 'app_settings', 'legacy_app_settings');
+    await _renameIfExists(db, 'user_settings', 'legacy_user_settings');
 
     await _createV2Schema(db);
 
-    await db.execute('''
-      INSERT INTO data_packages (
-        id, user_id, name, operator, total_bytes, initial_used_bytes,
-        start_date, end_date, price, is_active, created_at, updated_at
-      )
-      SELECT
-        id, user_id, name, operator, total_bytes, initial_used_bytes,
-        start_date, end_date, price,
-        CASE
-          WHEN is_active = 1 AND id = (
-            SELECT MAX(candidate.id)
-            FROM legacy_data_packages AS candidate
-            WHERE candidate.user_id = legacy_data_packages.user_id
-              AND candidate.is_active = 1
-          ) THEN 1
-          ELSE 0
-        END,
-        created_at, updated_at
-      FROM legacy_data_packages
-    ''');
+    // Tanpa tabel lama tidak ada data yang perlu dipindahkan.
+    if (!hasPackages && !hasUsage && !hasAlerts) return;
+
+    if (hasPackages) {
+      await db.execute('''
+        INSERT INTO data_packages (
+          id, user_id, name, operator, total_bytes, initial_used_bytes,
+          start_date, end_date, price, is_active, created_at, updated_at
+        )
+        SELECT
+          id, user_id, name, operator, total_bytes, initial_used_bytes,
+          start_date, end_date, price,
+          CASE
+            WHEN is_active = 1 AND id = (
+              SELECT MAX(candidate.id)
+              FROM legacy_data_packages AS candidate
+              WHERE candidate.user_id = legacy_data_packages.user_id
+                AND candidate.is_active = 1
+            ) THEN 1
+            ELSE 0
+          END,
+          created_at, updated_at
+        FROM legacy_data_packages
+      ''');
+    }
 
     // Setiap paket lama harus tetap memiliki kategori utama setelah migrasi.
-    // Karena scaffold lama belum mengenal kategori, seluruh kuota awal
-    // ditempatkan pada kategori utama.
+    // Rincian kategori v1 sudah diarsipkan di legacy_quota_categories, sehingga
+    // seluruh kuota awal ditempatkan pada satu kategori utama.
     await db.execute('''
       INSERT INTO quota_categories (
         package_id, name, category_type, quota_bytes, created_at, updated_at
@@ -106,38 +229,42 @@ class DbHelper {
       FROM data_packages
     ''');
 
-    await db.execute('''
-      INSERT INTO usage_records (
-        id, package_id, record_date, used_bytes, source, updated_at
-      )
-      SELECT id, package_id, record_date, used_bytes, source, updated_at
-      FROM legacy_usage_records
-    ''');
+    if (hasUsage) {
+      await db.execute('''
+        INSERT INTO usage_records (
+          id, package_id, record_date, used_bytes, source, updated_at
+        )
+        SELECT id, package_id, record_date, used_bytes, source, updated_at
+        FROM legacy_usage_records
+      ''');
+    }
 
-    await db.execute('''
-      INSERT INTO alert_logs (
-        id, package_id, alert_type, alert_date, sent_at
-      )
-      SELECT id, package_id, alert_type, alert_date, sent_at
-      FROM legacy_alert_logs
-      WHERE alert_type IN (
-        'daily80', 'daily100', 'dailyOver', 'quota10', 'expiring1d'
-      )
-    ''');
+    if (hasAlerts) {
+      await db.execute('''
+        INSERT INTO alert_logs (
+          id, package_id, alert_type, alert_date, sent_at
+        )
+        SELECT id, package_id, alert_type, alert_date, sent_at
+        FROM legacy_alert_logs
+        WHERE alert_type IN (
+          'daily80', 'daily100', 'dailyOver', 'quota10', 'expiring1d'
+        )
+      ''');
 
-    await db.execute('''
-      CREATE TABLE legacy_alert_logs_archive AS
-      SELECT *
-      FROM legacy_alert_logs
-      WHERE alert_type NOT IN (
-        'daily80', 'daily100', 'dailyOver', 'quota10', 'expiring1d'
-      )
-    ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS legacy_alert_logs_archive AS
+        SELECT *
+        FROM legacy_alert_logs
+        WHERE alert_type NOT IN (
+          'daily80', 'daily100', 'dailyOver', 'quota10', 'expiring1d'
+        )
+      ''');
+    }
 
     // Hapus tabel lama dari yang paling bergantung ke tabel induk.
-    await db.execute('DROP TABLE legacy_usage_records');
-    await db.execute('DROP TABLE legacy_alert_logs');
-    await db.execute('DROP TABLE legacy_data_packages');
+    if (hasUsage) await db.execute('DROP TABLE legacy_usage_records');
+    if (hasAlerts) await db.execute('DROP TABLE legacy_alert_logs');
+    if (hasPackages) await db.execute('DROP TABLE legacy_data_packages');
 
     // legacy_app_settings dan legacy_alert_logs_archive sengaja dipertahankan
     // sebagai arsip. Jangan hapus sebelum pemetaan datanya disepakati.

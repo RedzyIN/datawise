@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/theme.dart';
+
 import 'history_detail_page.dart';
 import '../../features/auth/auth_provider.dart';
 import '../../features/package/package_provider.dart';
@@ -15,14 +17,10 @@ class HistoryPage extends StatefulWidget {
 }
 
 class _HistoryPageState extends State<HistoryPage> {
+  AppPageColors get pal => AppPageColors.of(context);
+
   String? _requestedUid;
   bool _hasLoadedCurrentUser = false;
-
-  static const Color _backgroundColor = Color(0xFFE4FBF7);
-  static const Color _primaryColor = Color(0xFF00796F);
-  static const Color _titleColor = Color(0xFF073B3A);
-  static const Color _mutedColor = Color(0xFF66817E);
-  static const Color _borderColor = Color(0xFFD7F0EC);
 
   @override
   void didChangeDependencies() {
@@ -131,26 +129,26 @@ class _HistoryPageState extends State<HistoryPage> {
   Color _getStatusColor(PackageStatus status) {
     switch (status) {
       case PackageStatus.inactive:
-        return const Color(0xFF00796F);
+        return pal.primary;
       case PackageStatus.expired:
-        return const Color(0xFFCC5555);
+        return pal.danger;
       case PackageStatus.archived:
-        return const Color(0xFF849492);
+        return pal.muted;
       case PackageStatus.active:
-        return const Color(0xFF00695C);
+        return pal.primaryDeep;
     }
   }
 
   Color _getStatusBackground(PackageStatus status) {
     switch (status) {
       case PackageStatus.inactive:
-        return const Color(0xFFE4FBF7);
+        return pal.mint;
       case PackageStatus.expired:
-        return const Color(0xFFFFEEEE);
+        return pal.dangerBg;
       case PackageStatus.archived:
-        return const Color(0xFFF0F2F1);
+        return pal.surfaceAlt;
       case PackageStatus.active:
-        return const Color(0xFFD7F0EC);
+        return pal.line;
     }
   }
 
@@ -160,31 +158,29 @@ class _HistoryPageState extends State<HistoryPage> {
 
   @override
   Widget build(BuildContext context) {
+    final pal = AppPageColors.of(context);
+
     final authProvider = context.watch<AuthProvider>();
     final packageProvider = context.watch<PackageProvider>();
 
     final uid = authProvider.currentUser?.uid;
 
     if (authProvider.status == AuthStatus.unknown) {
-      return _buildStatusView(
-        const CircularProgressIndicator(color: _primaryColor),
-      );
+      return _buildStatusView(CircularProgressIndicator(color: pal.primary));
     }
 
     if (uid == null) {
       return _buildStatusView(
-        const Text(
+        Text(
           'Silakan masuk untuk melihat riwayat paket.',
-          style: TextStyle(color: _mutedColor),
+          style: TextStyle(color: pal.muted),
           textAlign: TextAlign.center,
         ),
       );
     }
 
     if (packageProvider.isLoading || !_hasLoadedCurrentUser) {
-      return _buildStatusView(
-        const CircularProgressIndicator(color: _primaryColor),
-      );
+      return _buildStatusView(CircularProgressIndicator(color: pal.primary));
     }
 
     if (packageProvider.errorMessage != null) {
@@ -192,15 +188,15 @@ class _HistoryPageState extends State<HistoryPage> {
         Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
               'Gagal memuat riwayat paket.',
-              style: TextStyle(color: _titleColor),
+              style: TextStyle(color: pal.ink),
             ),
             const SizedBox(height: 12),
             Text(
               packageProvider.errorMessage!,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: _mutedColor),
+              style: TextStyle(color: pal.muted),
             ),
             const SizedBox(height: 12),
             TextButton(
@@ -227,26 +223,26 @@ class _HistoryPageState extends State<HistoryPage> {
     final historyPackages = _getHistoryPackages(packageProvider.packages);
 
     return ColoredBox(
-      color: _backgroundColor,
+      color: pal.background,
       child: RefreshIndicator(
-        color: _primaryColor,
+        color: pal.primary,
         onRefresh: () => _refreshHistory(uid),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
           children: [
-            const Text(
+            Text(
               'Riwayat Paket',
               style: TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.bold,
-                color: _titleColor,
+                color: pal.ink,
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Daftar paket terdahulu beserta informasi masa berlakunya.',
-              style: TextStyle(fontSize: 14, color: _mutedColor),
+              style: TextStyle(fontSize: 14, color: pal.muted),
             ),
             const SizedBox(height: 28),
 
@@ -255,10 +251,10 @@ class _HistoryPageState extends State<HistoryPage> {
             else ...[
               Text(
                 '${historyPackages.length} paket tersimpan',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: _titleColor,
+                  color: pal.ink,
                 ),
               ),
               const SizedBox(height: 12),
@@ -272,7 +268,7 @@ class _HistoryPageState extends State<HistoryPage> {
 
   Widget _buildStatusView(Widget child) {
     return ColoredBox(
-      color: _backgroundColor,
+      color: pal.background,
       child: Center(
         child: Padding(padding: const EdgeInsets.all(24), child: child),
       ),
@@ -288,29 +284,25 @@ class _HistoryPageState extends State<HistoryPage> {
             width: 76,
             height: 76,
             decoration: BoxDecoration(
-              color: _primaryColor.withValues(alpha: 0.08),
+              color: pal.primary.withValues(alpha: 0.08),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.history_rounded,
-              size: 38,
-              color: _primaryColor,
-            ),
+            child: Icon(Icons.history_rounded, size: 38, color: pal.primary),
           ),
           const SizedBox(height: 20),
-          const Text(
+          Text(
             'Belum Ada Riwayat Paket',
             style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.bold,
-              color: _titleColor,
+              color: pal.ink,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Paket yang sudah tidak aktif, kedaluwarsa, atau diarsipkan akan muncul di sini.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: _mutedColor),
+            style: TextStyle(fontSize: 13, color: pal.muted),
           ),
         ],
       ),
@@ -332,9 +324,9 @@ class _HistoryPageState extends State<HistoryPage> {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: pal.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _borderColor, width: 1),
+          border: Border.all(color: pal.line, width: 1),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -345,20 +337,20 @@ class _HistoryPageState extends State<HistoryPage> {
                 Expanded(
                   child: Text(
                     package.packageName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: _titleColor,
+                      color: pal.ink,
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Text(
                   _formatBytes(package.advertisedTotalQuotaBytes),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: _primaryColor,
+                    color: pal.primary,
                   ),
                 ),
               ],
@@ -366,21 +358,17 @@ class _HistoryPageState extends State<HistoryPage> {
             const SizedBox(height: 8),
             Text(
               package.operatorName ?? '-',
-              style: const TextStyle(fontSize: 14, color: _mutedColor),
+              style: TextStyle(fontSize: 14, color: pal.muted),
             ),
             const SizedBox(height: 12),
             Row(
               children: [
-                const Icon(
-                  Icons.calendar_today_rounded,
-                  size: 14,
-                  color: _mutedColor,
-                ),
+                Icon(Icons.calendar_today_rounded, size: 14, color: pal.muted),
                 const SizedBox(width: 7),
                 Expanded(
                   child: Text(
                     'Berakhir ${_formatDate(package.endDate)}',
-                    style: const TextStyle(fontSize: 12, color: _mutedColor),
+                    style: TextStyle(fontSize: 12, color: pal.muted),
                   ),
                 ),
                 Container(

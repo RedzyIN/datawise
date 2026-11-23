@@ -1,5 +1,4 @@
-
- // MILIK ARSITEK. firebase_options.dart dibuat oleh `flutterfire configure`.
+// MILIK ARSITEK. firebase_options.dart dibuat oleh `flutterfire configure`.
 // Integrasi ThemeProvider untuk pengaturan Light Mode dan Dark Mode.
 
 import 'package:firebase_core/firebase_core.dart';
@@ -17,9 +16,7 @@ import 'firebase_options.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   runApp(const DatawiseApp());
 }
@@ -36,28 +33,40 @@ class _DatawiseAppState extends State<DatawiseApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: _providers,
-      child: const _ThemeModeApp(),
-    );
+    return MultiProvider(providers: _providers, child: const _ThemeModeApp());
   }
 }
 
-class _ThemeModeApp extends StatelessWidget {
+class _ThemeModeApp extends StatefulWidget {
   const _ThemeModeApp();
+
+  @override
+  State<_ThemeModeApp> createState() => _ThemeModeAppState();
+}
+
+class _ThemeModeAppState extends State<_ThemeModeApp> {
+  String? _lastUid;
+  bool _themeSynced = false;
+
+  /// Memuat tema sesuai akun yang sedang login, hanya saat akun berubah.
+  void _syncTheme(String? uid) {
+    if (_themeSynced && uid == _lastUid) return;
+
+    _themeSynced = true;
+    _lastUid = uid;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<ThemeProvider>().loadForUser(uid);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Consumer<AuthProvider>(
       builder: (context, auth, child) {
-        final uid = auth.currentUser?.uid;
-
-        // Memuat tema sesuai akun yang sedang login.
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (context.mounted) {
-            context.read<ThemeProvider>().loadForUser(uid);
-          }
-        });
+        _syncTheme(auth.currentUser?.uid);
 
         return Consumer<ThemeProvider>(
           builder: (context, themeProvider, child) {
