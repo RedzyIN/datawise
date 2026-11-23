@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/models.dart';
 import '../../repositories/repositories.dart';
 import '../../services/alert_service.dart';
+import '../../services/dashboard_data_limit_calculator.dart';
 import '../../services/data_limit_service.dart';
 import '../../services/planner_service.dart';
 import '../../services/usage_service.dart';
@@ -43,6 +44,7 @@ class DashboardProvider extends ChangeNotifier {
     this._alertService, {
     this.categoryRepo,
     this.dataLimitRepo,
+    this.dataLimitService,
     UsageSyncService? syncService,
     DashboardPlanner? planner,
   }) : _usageRepo = usageRepo,
@@ -58,6 +60,10 @@ class DashboardProvider extends ChangeNotifier {
   final QuotaCategoryRepository? categoryRepo;
   final DataLimitRepository? dataLimitRepo;
 
+  /// Layanan Data Limit Warning (penyimpanan + notifikasi). Opsional agar
+  /// Dashboard tetap dapat dipakai tanpa fitur minggu 2.
+  final DataLimitService? dataLimitService;
+
   final UsageSyncService _sync;
   final DashboardPlanner _planner;
 
@@ -70,7 +76,7 @@ class DashboardProvider extends ChangeNotifier {
   List<CategoryUsage> categoryUsage = const [];
   int unclassifiedBytes = 0;
 
-  DataLimitStatus dataLimit = DataLimitStatus.none;
+  DashboardDataLimitStatus dataLimit = DashboardDataLimitStatus.none;
 
   Map<DateTime, int> dailyUsage = const {};
   String? errorMessage;
@@ -155,7 +161,7 @@ class DashboardProvider extends ChangeNotifier {
 
     categoryUsage = const [];
     unclassifiedBytes = 0;
-    dataLimit = DataLimitStatus.none;
+    dataLimit = DashboardDataLimitStatus.none;
 
     dailyUsage = const {};
     totalUsedBytes = 0;
@@ -357,13 +363,29 @@ class DashboardProvider extends ChangeNotifier {
         }
       }
 
-      if (gen != _generation) return;
-
       // Evaluasi batas penggunaan harian.
-      final loadedDataLimit = DataLimitService.evaluate(
+      final loadedDataLimit = DashboardDataLimitCalculator.evaluate(
         limitSetting,
         todayUsed,
       );
+
+      // Data Limit Warning memakai angka pemakaian yang sama dengan Dashboard.
+      // Notifikasi deduplikasi per paket, tanggal, dan ambang.
+      final limitNotifier = dataLimitService;
+      if (limitNotifier != null) {
+        try {
+          await limitNotifier.evaluateAndNotify(
+            packageId: packageId,
+            userId: userId,
+            usedBytes: todayUsed,
+            plannerResult: plannerResult,
+          );
+        } catch (_) {
+          // Kegagalan notifikasi tidak boleh menggagalkan Dashboard.
+        }
+      }
+
+      if (gen != _generation) return;
 
       // Perbarui seluruh state setelah proses pemuatan selesai.
       package = active;

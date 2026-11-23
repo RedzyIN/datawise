@@ -6,8 +6,12 @@ import '../../services/usage_service.dart';
 import '../../services/usage_sync_service.dart';
 
 class UsageProvider extends ChangeNotifier {
-  UsageProvider(this._service, this._usageRepo, this._categoryRepo)
-    : _sync = UsageSyncServiceImpl(_service, _usageRepo);
+  UsageProvider(
+    this._service,
+    this._usageRepo,
+    this._categoryRepo, {
+    UsageSyncService? syncService,
+  }) : _sync = syncService ?? UsageSyncServiceImpl(_service, _usageRepo);
 
   final UsageService _service;
   final UsageRepository _usageRepo;

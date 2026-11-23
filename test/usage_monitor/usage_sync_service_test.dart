@@ -1,7 +1,7 @@
 import 'package:datawise/core/constants.dart';
 import 'package:datawise/models/models.dart';
 import 'package:datawise/repositories/in_memory/in_memory_repositories.dart';
-import 'package:datawise/services/data_limit_service.dart';
+import 'package:datawise/services/dashboard_data_limit_calculator.dart';
 import 'package:datawise/services/usage_service.dart';
 import 'package:datawise/services/usage_sync_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,6 +34,18 @@ class _FakeUsageService implements UsageService {
           updatedAt: start,
         ),
       );
+
+  @override
+  Future<AppUsageReading> readAppUsage(DateTime start, DateTime end) async {
+    // Sinkronisasi total perangkat tidak memakai rincian per aplikasi.
+    return AppUsageReading(
+      status: UsageReadStatus.unsupported,
+      buckets: const [],
+      start: start,
+      end: end,
+      message: null,
+    );
+  }
 
   @override
   Future<UsageReading> refreshToday(DataPackage package) async {
@@ -206,7 +218,7 @@ void main() {
     expect(service.refreshCalls, 0);
   });
 
-  group('DataLimitService', () {
+  group('DashboardDataLimitCalculator', () {
     test('batas 100 MB dengan pemakaian 100 MB menghasilkan 100%', () {
       const limit = 100 * kBytesPerMB;
       final setting = DataLimitSetting(
@@ -216,7 +228,10 @@ void main() {
         updatedAt: DateTime.now(),
       );
 
-      final status = DataLimitService.evaluate(setting, 100 * kBytesPerMB);
+      final status = DashboardDataLimitCalculator.evaluate(
+        setting,
+        100 * kBytesPerMB,
+      );
 
       expect(status.isConfigured, isTrue);
       expect(status.percent, 100.0);
@@ -232,7 +247,10 @@ void main() {
         updatedAt: DateTime.now(),
       );
 
-      final status = DataLimitService.evaluate(setting, 50 * kBytesPerMB);
+      final status = DashboardDataLimitCalculator.evaluate(
+        setting,
+        50 * kBytesPerMB,
+      );
 
       expect(status.percent, 50.0);
       expect(status.shouldWarn, isFalse);
@@ -240,7 +258,10 @@ void main() {
     });
 
     test('tanpa batas atau batas nonaktif tidak menghasilkan persentase', () {
-      expect(DataLimitService.evaluate(null, 1000).isConfigured, isFalse);
+      expect(
+        DashboardDataLimitCalculator.evaluate(null, 1000).isConfigured,
+        isFalse,
+      );
 
       final disabled = DataLimitSetting(
         packageId: 'pkg',
@@ -249,7 +270,7 @@ void main() {
         updatedAt: DateTime.now(),
       );
 
-      final status = DataLimitService.evaluate(disabled, 1000);
+      final status = DashboardDataLimitCalculator.evaluate(disabled, 1000);
 
       expect(status.isConfigured, isFalse);
       expect(status.percent, 0);
