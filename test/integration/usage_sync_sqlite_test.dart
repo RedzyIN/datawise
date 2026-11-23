@@ -37,6 +37,18 @@ class _FakeAndroidUsage implements UsageService {
   }
 
   @override
+  Future<AppUsageReading> readAppUsage(DateTime start, DateTime end) async {
+    // Perangkat uji tidak menyediakan rincian per aplikasi.
+    return AppUsageReading(
+      status: UsageReadStatus.unsupported,
+      buckets: const [],
+      start: start,
+      end: end,
+      message: 'Rincian per aplikasi tidak tersedia pada pengujian ini.',
+    );
+  }
+
+  @override
   Future<UsageReading> refreshToday(DataPackage package) async {
     final now = DateTime.now();
 

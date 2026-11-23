@@ -5,6 +5,10 @@
 // DEVICE_TOTAL: catatan ini tidak boleh dan tidak dapat dialokasikan ke
 // kategori kuota (lihat trigger `prevent_invalid_allocation_*` pada skema v3).
 // Dengan begitu sistem tidak mengarang klasifikasi yang tidak diketahui.
+//
+// Sinkronisasi rincian per aplikasi (fitur minggu 3) berada di
+// `app_usage_sync_service.dart` agar tidak menjadi ketergantungan fitur
+// minggu 1 dan 2.
 import '../models/models.dart';
 import '../repositories/repositories.dart';
 import 'usage_service.dart';

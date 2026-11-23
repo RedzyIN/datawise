@@ -439,7 +439,7 @@ class _DashboardPageState extends State<DashboardPage>
             child: _SecondaryButton(
               icon: Icons.apps_rounded,
               label: 'Detail Aplikasi',
-              onTap: () => _showAppDetails(context, d),
+              onTap: () => _showAppDetails(context, d, v.packageForNav),
             ),
           ),
         ],
@@ -534,7 +534,18 @@ class _DashboardPageState extends State<DashboardPage>
 
   // ------------------------------------------------------------ dialog
 
-  void _showAppDetails(BuildContext context, DashboardProvider d) {
+  // Fitur minggu 3 (Application Usage Breakdown) sengaja BELUM diaktifkan.
+  // `UsageBreakdownSheet`/`UsageBreakdownProvider` tetap tersimpan dan teruji,
+  // tetapi tombol ini belum membukanya karena:
+  // 1. Pembacaan per aplikasi belum diverifikasi pada perangkat nyata.
+  // 2. Sinkronisasi per aplikasi mengalokasikan APP_USAGE ke MAIN tanpa aturan
+  //    klasifikasi, sehingga belum layak dipakai sebagai data kuota.
+  // Aktifkan kembali setelah syarat di PRD/instruksi integrasi terpenuhi.
+  void _showAppDetails(
+    BuildContext context,
+    DashboardProvider d,
+    DataPackage package,
+  ) {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,

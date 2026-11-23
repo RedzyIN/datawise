@@ -1,65 +1,243 @@
-// Perhitungan batas pemakaian harian. Fungsi murni: tanpa database.
+// Layanan Data Limit Warning: menyimpan batas harian, mengevaluasi pemakaian,
+// dan mengirim notifikasi 80%/100% tanpa duplikasi.
+//
+// Kalkulasi status ringkas untuk Dashboard berada di
+// `dashboard_data_limit_calculator.dart` agar tanggung jawab kedua bagian tidak
+// saling bergantung.
+import '../core/format_utils.dart';
 import '../models/models.dart';
+import '../repositories/repositories.dart';
+import 'local_notification_service.dart';
 
-class DataLimitStatus {
-  const DataLimitStatus({
-    required this.isConfigured,
-    required this.limitBytes,
+enum DataLimitStatus { normal, warning, reached, exceeded, noLimit, disabled }
+
+class DataLimitEvaluation {
+  final int usedBytes;
+  final int? limitBytes;
+  final double? usagePercent;
+  final DataLimitStatus status;
+  final AlertType? alertType;
+
+  const DataLimitEvaluation({
     required this.usedBytes,
-    required this.percent,
-    required this.shouldWarn,
-    required this.isExceeded,
+    required this.limitBytes,
+    required this.usagePercent,
+    required this.status,
+    required this.alertType,
   });
 
-  /// true hanya jika paket memiliki batas harian aktif.
-  final bool isConfigured;
-  final int limitBytes;
-  final int usedBytes;
-
-  /// Pemakaian dalam persen terhadap batas (bisa melebihi 100).
-  final double percent;
-  final bool shouldWarn;
-  final bool isExceeded;
-
-  static const DataLimitStatus none = DataLimitStatus(
-    isConfigured: false,
-    limitBytes: 0,
-    usedBytes: 0,
-    percent: 0,
-    shouldWarn: false,
-    isExceeded: false,
-  );
+  int? get remainingBytes =>
+      limitBytes == null ? null : limitBytes! - usedBytes;
 }
 
 class DataLimitService {
-  /// [todayUsedBytes] harus berasal dari catatan pemakaian yang tersimpan.
-  static DataLimitStatus evaluate(
-    DataLimitSetting? setting,
-    int todayUsedBytes,
-  ) {
-    final used = todayUsedBytes < 0 ? 0 : todayUsedBytes;
-    final limit = setting?.dailyLimitBytes;
+  DataLimitService(
+    this._dataLimitRepo,
+    this._usageRepo,
+    this._alertRepo,
+    this._settingsRepo,
+    this._notifications,
+  );
 
-    if (setting == null || !setting.isEnabled || limit == null || limit <= 0) {
-      return DataLimitStatus(
-        isConfigured: false,
-        limitBytes: limit ?? 0,
-        usedBytes: used,
-        percent: 0,
-        shouldWarn: false,
-        isExceeded: false,
+  final DataLimitRepository _dataLimitRepo;
+  final UsageRepository _usageRepo;
+  final AlertRepository _alertRepo;
+  final SettingsRepository _settingsRepo;
+  final LocalNotificationService _notifications;
+
+  // Menyimpan batas pemakaian harian.
+  Future<void> saveDailyLimit(DataLimitSetting setting) async {
+    await _dataLimitRepo.upsert(setting);
+  }
+
+  // Mengambil pengaturan batas pemakaian suatu paket.
+  Future<DataLimitSetting?> getDailyLimit(String packageId) async {
+    return _dataLimitRepo.getByPackage(packageId);
+  }
+
+  // Notifikasi hanya dikirim bila preferensi Settings aktif.
+  Future<bool> notificationsEnabledFor(String userId) async {
+    final setting = await _settingsRepo.getByUserId(userId);
+    return setting?.notificationsEnabled ?? true;
+  }
+
+  // Pemakaian efektif satu hari. Manual menggantikan otomatis.
+  // Urutan otomatis mengikuti PRD 5.4 dan DashboardProvider: DEVICE_TOTAL
+  // lebih dulu, APP_USAGE hanya bila agregat perangkat tidak tersedia.
+  // Keduanya tidak pernah dijumlahkan bersama.
+  Future<int> usedBytesOn(String packageId, DateTime day) async {
+    final start = dateOnly(day);
+    final end = start.add(const Duration(days: 1));
+
+    final records = await _usageRepo.getRecordsForPeriod(packageId, start, end);
+
+    int totalOf(UsageRecordScope scope) => records
+        .where(
+          (record) =>
+              record.recordScope == scope &&
+              record.networkType != NetworkType.wifi,
+        )
+        .fold(0, (sum, record) => sum + record.totalBytes);
+
+    final manual = totalOf(UsageRecordScope.manualTotal);
+    if (manual > 0) return manual;
+
+    final device = totalOf(UsageRecordScope.deviceTotal);
+    if (device > 0) return device;
+
+    return totalOf(UsageRecordScope.appUsage);
+  }
+
+  // Menghitung penggunaan dan menentukan status peringatan.
+  Future<DataLimitEvaluation> evaluate({
+    required String packageId,
+    required int usedBytes,
+    PlannerResult? plannerResult,
+  }) async {
+    if (usedBytes < 0) {
+      throw ArgumentError('Pemakaian data tidak boleh negatif.');
+    }
+
+    final setting = await getDailyLimit(packageId);
+
+    if (setting != null && !setting.isEnabled) {
+      return DataLimitEvaluation(
+        usedBytes: usedBytes,
+        limitBytes: setting.dailyLimitBytes,
+        usagePercent: null,
+        status: DataLimitStatus.disabled,
+        alertType: null,
       );
     }
 
-    final percent = used * 100 / limit;
+    // Gunakan batas khusus pengguna jika tersedia.
+    // Jika tidak, gunakan target harian dari Data Planner.
+    final int? limitBytes =
+        setting?.dailyLimitBytes ?? plannerResult?.dailyTargetBytes?.round();
 
-    return DataLimitStatus(
-      isConfigured: true,
-      limitBytes: limit,
-      usedBytes: used,
-      percent: percent,
-      shouldWarn: percent >= setting.warnAtPercent,
-      isExceeded: percent >= setting.limitAtPercent,
+    if (limitBytes == null || limitBytes <= 0) {
+      return DataLimitEvaluation(
+        usedBytes: usedBytes,
+        limitBytes: null,
+        usagePercent: null,
+        status: DataLimitStatus.noLimit,
+        alertType: null,
+      );
+    }
+
+    final double percentage = (usedBytes / limitBytes) * 100;
+
+    final int warningThreshold = setting?.warnAtPercent ?? 80;
+    final int limitThreshold = setting?.limitAtPercent ?? 100;
+
+    // Pemakaian tepat pada ambang dihitung "tercapai"; di atasnya "terlampaui".
+    if (percentage > limitThreshold) {
+      return DataLimitEvaluation(
+        usedBytes: usedBytes,
+        limitBytes: limitBytes,
+        usagePercent: percentage,
+        status: DataLimitStatus.exceeded,
+        alertType: AlertType.dailyOver,
+      );
+    }
+
+    if (percentage >= limitThreshold) {
+      return DataLimitEvaluation(
+        usedBytes: usedBytes,
+        limitBytes: limitBytes,
+        usagePercent: percentage,
+        status: DataLimitStatus.reached,
+        alertType: AlertType.daily100,
+      );
+    }
+
+    if (percentage >= warningThreshold) {
+      return DataLimitEvaluation(
+        usedBytes: usedBytes,
+        limitBytes: limitBytes,
+        usagePercent: percentage,
+        status: DataLimitStatus.warning,
+        alertType: AlertType.daily80,
+      );
+    }
+
+    return DataLimitEvaluation(
+      usedBytes: usedBytes,
+      limitBytes: limitBytes,
+      usagePercent: percentage,
+      status: DataLimitStatus.normal,
+      alertType: null,
     );
+  }
+
+  // Evaluasi + peringatan lokal. Kunci deduplikasi memakai paket, tanggal
+  // lokal, dan jenis ambang sehingga notifikasi identik hanya terkirim sekali
+  // per hari.
+  Future<DataLimitEvaluation> evaluateAndNotify({
+    required String packageId,
+    required String userId,
+    required int usedBytes,
+    PlannerResult? plannerResult,
+    DateTime? now,
+  }) async {
+    final evaluation = await evaluate(
+      packageId: packageId,
+      usedBytes: usedBytes,
+      plannerResult: plannerResult,
+    );
+
+    final alertType = evaluation.alertType;
+    if (alertType == null) return evaluation;
+
+    if (!await notificationsEnabledFor(userId)) return evaluation;
+
+    final triggeredAt = now ?? DateTime.now();
+    final dedupeKey =
+        'daily_limit_${packageId}_${dateToDb(triggeredAt)}_${alertType.name}';
+
+    if (await _alertRepo.existsByDedupeKey(dedupeKey)) return evaluation;
+
+    final message = _warningMessage(evaluation);
+
+    await _alertRepo.add(
+      AlertLog(
+        packageId: packageId,
+        alertType: alertTypeToDb(alertType),
+        message: message,
+        observedBytes: usedBytes,
+        thresholdBytes: evaluation.limitBytes,
+        dedupeKey: dedupeKey,
+        triggeredAt: triggeredAt,
+        isRead: false,
+      ),
+    );
+
+    await _notifications.showWarning(
+      id: dedupeKey.hashCode & 0x7fffffff,
+      title: 'Peringatan Batas Data',
+      body: message,
+      payload: dedupeKey,
+    );
+
+    return evaluation;
+  }
+
+  String _warningMessage(DataLimitEvaluation evaluation) {
+    final limit = evaluation.limitBytes == null
+        ? '-'
+        : formatBytes(evaluation.limitBytes!);
+    final percent = (evaluation.usagePercent ?? 0).round();
+
+    return switch (evaluation.status) {
+      DataLimitStatus.warning =>
+        'Pemakaian data hari ini $percent% dari batas $limit. '
+            'Segera kurangi pemakaian agar tidak melewati batas.',
+      DataLimitStatus.reached =>
+        'Batas penggunaan data harian $limit sudah tercapai ($percent%).',
+      DataLimitStatus.exceeded =>
+        'Pemakaian data hari ini $percent% dari batas $limit. '
+            'Batas harian terlampaui.',
+      _ => 'Pemakaian data hari ini $percent% dari batas $limit.',
+    };
   }
 }
