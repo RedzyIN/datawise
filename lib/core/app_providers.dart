@@ -85,8 +85,14 @@ List<SingleChildWidget> buildAppProviders() {
       create: (_) => UsageProvider(usageService, usageRepo, categoryRepo),
     ),
     ChangeNotifierProvider<DashboardProvider>(
-      create: (_) =>
-          DashboardProvider(packageRepo, usageRepo, usageService, alertService),
+      create: (_) => DashboardProvider(
+        packageRepo,
+        usageRepo,
+        usageService,
+        alertService,
+        categoryRepo: categoryRepo,
+        dataLimitRepo: dataLimitRepo,
+      ),
     ),
   ];
 }
