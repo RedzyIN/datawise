@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -10,10 +9,7 @@ import 'widgets/usage_permission_tile.dart';
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
-  Future<void> _confirmLogout(
-    BuildContext context,
-    AuthProvider auth,
-  ) async {
+  Future<void> _confirmLogout(BuildContext context, AuthProvider auth) async {
     final result = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -43,9 +39,8 @@ class SettingsPage extends StatelessWidget {
     if (!context.mounted) return;
 
     if (auth.errorMessage != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(auth.errorMessage!)),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(auth.errorMessage!)));
     }
   }
 
@@ -63,10 +58,7 @@ class SettingsPage extends StatelessWidget {
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Text(
                 'Profil Pengguna',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
 
@@ -95,9 +87,7 @@ class SettingsPage extends StatelessWidget {
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.logout),
                 label: Text(
@@ -121,13 +111,10 @@ class SettingsPage extends StatelessWidget {
 
             Consumer<ThemeProvider>(
               builder: (context, themeProvider, child) {
-                final isDark =
-                    themeProvider.themeMode == ThemeMode.dark;
+                final isDark = themeProvider.themeMode == ThemeMode.dark;
 
                 return SwitchListTile(
-                  secondary: Icon(
-                    isDark ? Icons.dark_mode : Icons.light_mode,
-                  ),
+                  secondary: Icon(isDark ? Icons.dark_mode : Icons.light_mode),
                   title: const Text('Dark Mode'),
                   subtitle: Text(
                     isDark ? 'Mode gelap aktif' : 'Mode terang aktif',
@@ -150,7 +137,6 @@ class SettingsPage extends StatelessWidget {
             // SLOT-D: notifikasi milik Anggota D
 
             // SLOT-C: pengaturan internet Android
-
             const Divider(height: 32),
 
             // 3. Informasi aplikasi

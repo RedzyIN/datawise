@@ -1,12 +1,36 @@
-// MILIK ARSITEK. KONTRAK BEKU #4.
 import '../models/models.dart';
 
 abstract class PackageRepository {
-  Future<int> add(DataPackage p); // jika isActive, paket lain user itu jadi nonaktif
-  Future<void> update(DataPackage p);
-  Future<void> delete(int id);
-  Future<DataPackage?> getById(int id);
+  /// [initialUsedBytes] > 0 membuat catatan pemakaian awal (MANUAL_TOTAL)
+  /// yang dialokasikan ke kategori utama, dalam satu transaksi dengan paket.
+  Future<String> add(DataPackage package, {int initialUsedBytes = 0});
+
+  /// Membuat paket beserta kategori tambahannya dalam satu transaksi.
+  ///
+  /// Kategori MAIN dibuat otomatis dengan kapasitas sisa setelah kategori
+  /// tambahan, sehingga kegagalan salah satu kategori membatalkan seluruh
+  /// proses dan tidak meninggalkan data parsial.
+  Future<String> addWithCategories(
+    DataPackage package, {
+    List<QuotaCategory> categories = const [],
+    int initialUsedBytes = 0,
+  });
+
+  Future<void> update(DataPackage package);
+
+  /// Melempar AppException jika paket sudah memiliki riwayat pemakaian.
+  Future<void> delete(String packageId);
+
+  Future<bool> hasUsageHistory(String packageId);
+
+  Future<DataPackage?> getById(String packageId);
   Future<DataPackage?> getActive(String userId);
-  Future<List<DataPackage>> getAll(String userId); // terbaru dulu
-  Future<void> setActive(String userId, int packageId);
+  Future<List<DataPackage>> getAll(String userId);
+
+  /// Menjamin hanya satu paket ACTIVE per pengguna.
+  Future<void> setActive(String userId, String packageId);
+
+  /// Mengubah paket ACTIVE/INACTIVE yang sudah lewat tanggal berakhir
+  /// menjadi EXPIRED. Mengembalikan jumlah paket yang diubah.
+  Future<int> markExpired(String userId);
 }

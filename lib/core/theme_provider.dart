@@ -1,8 +1,10 @@
-
 import 'package:flutter/material.dart';
 
+import '../models/models.dart';
 import '../repositories/settings_repository.dart';
 
+/// Pengaturan Light/Dark Mode milik Mawan, disimpan melalui kontrak
+/// [SettingsRepository] SQLite dari develop (`user_settings`).
 class ThemeProvider extends ChangeNotifier {
   ThemeProvider(this._settingsRepository);
 
@@ -13,8 +15,6 @@ class ThemeProvider extends ChangeNotifier {
   int _requestId = 0;
 
   ThemeMode get themeMode => _themeMode;
-
-  String _themeKey(String uid) => 'theme_mode_$uid';
 
   Future<void> loadForUser(String? uid) async {
     if (_currentUid == uid) return;
@@ -28,12 +28,14 @@ class ThemeProvider extends ChangeNotifier {
       return;
     }
 
-    final savedTheme = await _settingsRepository.get(_themeKey(uid));
+    final setting = await _settingsRepository.getByUserId(uid);
 
     if (_currentUid != uid || requestId != _requestId) return;
 
     _themeMode =
-        savedTheme == 'dark' ? ThemeMode.dark : ThemeMode.light;
+        setting?.themeMode.toUpperCase() == 'DARK'
+            ? ThemeMode.dark
+            : ThemeMode.light;
 
     notifyListeners();
   }
@@ -47,11 +49,19 @@ class ThemeProvider extends ChangeNotifier {
     final uid = _currentUid;
     if (uid == null) return;
 
-    await _settingsRepository.set(
-      _themeKey(uid),
-      mode == ThemeMode.dark ? 'dark' : 'light',
-    );
+    final existing = await _settingsRepository.getByUserId(uid);
 
     if (requestId != _requestId) return;
+
+    await _settingsRepository.upsert(
+      UserSetting(
+        userId: uid,
+        themeMode: mode == ThemeMode.dark ? 'DARK' : 'LIGHT',
+        paletteKey: existing?.paletteKey ?? 'BLUE',
+        notificationsEnabled: existing?.notificationsEnabled ?? true,
+        timezoneId: existing?.timezoneId ?? 'UTC',
+        updatedAt: DateTime.now(),
+      ),
+    );
   }
 }

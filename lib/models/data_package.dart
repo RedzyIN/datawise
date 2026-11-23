@@ -1,91 +1,101 @@
-// MILIK ARSITEK. KONTRAK BEKU #3.
 import 'date_codec.dart';
+import 'enums.dart';
 
-const Object _unset = Object();
+const Object _packageUnset = Object();
 
 class DataPackage {
-  final int? id;
-  final String userId, name, operator;
-  final int totalBytes, initialUsedBytes;
-  final DateTime startDate, endDate; // jam 00:00 lokal
-  final int? price;
-  final bool isActive;
-  final DateTime createdAt, updatedAt;
+  final String? id;
+  final String userId;
+  final String packageName;
+  final String? operatorName;
+  final int advertisedTotalQuotaBytes;
+  final DateTime startDate;
+  final DateTime endDate;
+  final PackageStatus status;
+  final DateTime createdAt;
+  final DateTime updatedAt;
 
   const DataPackage({
     this.id,
     required this.userId,
-    required this.name,
-    required this.operator,
-    required this.totalBytes,
-    required this.initialUsedBytes,
+    required this.packageName,
+    this.operatorName,
+    required this.advertisedTotalQuotaBytes,
     required this.startDate,
     required this.endDate,
-    required this.price,
-    required this.isActive,
+    required this.status,
     required this.createdAt,
     required this.updatedAt,
   });
 
-  /// Hanya dipanggil oleh repository.
+  static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  bool get isArchived => status == PackageStatus.archived;
+
+  /// Kedaluwarsa jika status EXPIRED atau tanggal berakhir sudah lewat.
+  bool isExpiredAt([DateTime? now]) {
+    final today = _dateOnly(now ?? DateTime.now());
+    return status == PackageStatus.expired ||
+        _dateOnly(endDate).isBefore(today);
+  }
+
+  /// Sisa hari sampai tanggal berakhir (minimal 0).
+  int daysRemaining([DateTime? now]) {
+    final today = _dateOnly(now ?? DateTime.now());
+    final diff = _dateOnly(endDate).difference(today).inDays;
+    return diff < 0 ? 0 : diff;
+  }
+
   Map<String, Object?> toMap() => {
-        if (id != null) 'id': id,
-        'user_id': userId,
-        'name': name,
-        'operator': operator,
-        'total_bytes': totalBytes,
-        'initial_used_bytes': initialUsedBytes,
-        'start_date': dateToDb(startDate),
-        'end_date': dateToDb(endDate),
-        'price': price,
-        'is_active': isActive ? 1 : 0,
-        'created_at': timeToMs(createdAt),
-        'updated_at': timeToMs(updatedAt),
-      };
+    if (id != null) 'id': id,
+    'user_id': userId,
+    'package_name': packageName,
+    'operator_name': operatorName,
+    'advertised_total_quota_bytes': advertisedTotalQuotaBytes,
+    'start_date': dateToDb(startDate),
+    'end_date': dateToDb(endDate),
+    'status': packageStatusToDb(status),
+    'created_at': timeToIso(createdAt),
+    'updated_at': timeToIso(updatedAt),
+  };
 
-  /// Hanya dipanggil oleh repository.
-  factory DataPackage.fromMap(Map<String, Object?> m) => DataPackage(
-        id: m['id'] as int?,
-        userId: m['user_id'] as String,
-        name: m['name'] as String,
-        operator: m['operator'] as String,
-        totalBytes: m['total_bytes'] as int,
-        initialUsedBytes: m['initial_used_bytes'] as int,
-        startDate: dateFromDb(m['start_date'] as String),
-        endDate: dateFromDb(m['end_date'] as String),
-        price: m['price'] as int?,
-        isActive: (m['is_active'] as int) == 1,
-        createdAt: timeFromMs(m['created_at'] as int),
-        updatedAt: timeFromMs(m['updated_at'] as int),
-      );
+  factory DataPackage.fromMap(Map<String, Object?> map) => DataPackage(
+    id: map['id'] as String,
+    userId: map['user_id'] as String,
+    packageName: map['package_name'] as String,
+    operatorName: map['operator_name'] as String?,
+    advertisedTotalQuotaBytes: map['advertised_total_quota_bytes'] as int,
+    startDate: dateFromDb(map['start_date'] as String),
+    endDate: dateFromDb(map['end_date'] as String),
+    status: packageStatusFromDb(map['status'] as String),
+    createdAt: timeFromIso(map['created_at'] as String),
+    updatedAt: timeFromIso(map['updated_at'] as String),
+  );
 
-  /// `id` dan `price` boleh di-set ke null dengan mengirim `null` eksplisit.
   DataPackage copyWith({
-    Object? id = _unset,
+    Object? id = _packageUnset,
     String? userId,
-    String? name,
-    String? operator,
-    int? totalBytes,
-    int? initialUsedBytes,
+    String? packageName,
+    Object? operatorName = _packageUnset,
+    int? advertisedTotalQuotaBytes,
     DateTime? startDate,
     DateTime? endDate,
-    Object? price = _unset,
-    bool? isActive,
+    PackageStatus? status,
     DateTime? createdAt,
     DateTime? updatedAt,
-  }) =>
-      DataPackage(
-        id: identical(id, _unset) ? this.id : id as int?,
-        userId: userId ?? this.userId,
-        name: name ?? this.name,
-        operator: operator ?? this.operator,
-        totalBytes: totalBytes ?? this.totalBytes,
-        initialUsedBytes: initialUsedBytes ?? this.initialUsedBytes,
-        startDate: startDate ?? this.startDate,
-        endDate: endDate ?? this.endDate,
-        price: identical(price, _unset) ? this.price : price as int?,
-        isActive: isActive ?? this.isActive,
-        createdAt: createdAt ?? this.createdAt,
-        updatedAt: updatedAt ?? this.updatedAt,
-      );
+  }) => DataPackage(
+    id: identical(id, _packageUnset) ? this.id : id as String?,
+    userId: userId ?? this.userId,
+    packageName: packageName ?? this.packageName,
+    operatorName: identical(operatorName, _packageUnset)
+        ? this.operatorName
+        : operatorName as String?,
+    advertisedTotalQuotaBytes:
+        advertisedTotalQuotaBytes ?? this.advertisedTotalQuotaBytes,
+    startDate: startDate ?? this.startDate,
+    endDate: endDate ?? this.endDate,
+    status: status ?? this.status,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 }
