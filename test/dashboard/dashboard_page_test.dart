@@ -116,11 +116,15 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     final packageRepo = InMemoryPackageRepository();
+    final categoryRepo = InMemoryQuotaCategoryRepository(packageRepo);
+    final usageRepo = InMemoryUsageRepository(packageRepo, categoryRepo);
+
     final dashboard = DashboardProvider(
       packageRepo,
-      InMemoryUsageRepository(packageRepo),
+      usageRepo,
       _Usage(false),
       _Alert(),
+      categoryRepo: categoryRepo,
     );
 
     await tester.pumpWidget(_app(_FakeAuth(null), dashboard));
@@ -147,11 +151,15 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     final packageRepo = InMemoryPackageRepository();
+    final categoryRepo = InMemoryQuotaCategoryRepository(packageRepo);
+    final usageRepo = InMemoryUsageRepository(packageRepo, categoryRepo);
+
     final dashboard = DashboardProvider(
       packageRepo,
-      InMemoryUsageRepository(packageRepo),
+      usageRepo,
       _Usage(false),
       _Alert(),
+      categoryRepo: categoryRepo,
     );
 
     await tester.pumpWidget(_app(_FakeAuth(user), dashboard));
@@ -164,6 +172,71 @@ void main() {
     dashboard.dispose();
   });
 
+  testWidgets('target harian dan mingguan tampil saat planner tersedia', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(412, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final packageRepo = InMemoryPackageRepository();
+    final categoryRepo = InMemoryQuotaCategoryRepository(packageRepo);
+    final usageRepo = InMemoryUsageRepository(packageRepo, categoryRepo);
+
+    final now = DateTime.now();
+
+    await packageRepo.add(
+      DataPackage(
+        userId: 'u1',
+        packageName: 'Paket Bulanan 30 GB',
+        operatorName: 'Telkomsel',
+        advertisedTotalQuotaBytes: 30000000000,
+        startDate: dateOnly(now.subtract(const Duration(days: 5))),
+        endDate: dateOnly(now.add(const Duration(days: 25))),
+        status: PackageStatus.active,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+
+    final dashboard = DashboardProvider(
+      packageRepo,
+      usageRepo,
+      _Usage(true),
+      _Alert(),
+      categoryRepo: categoryRepo,
+      planner:
+          ({
+            required DataPackage package,
+            required int totalUsedBytes,
+            required int todayUsedBytes,
+            required DateTime today,
+          }) {
+            return PlannerResult(
+              status: PlannerStatus.normal,
+              totalBytes: package.advertisedTotalQuotaBytes,
+              usedBytes: 500000000,
+              remainingBytes: 29500000000,
+              remainingDays: 25,
+              dailyTargetBytes: 1000000000,
+              weeklyTargetBytes: 7000000000,
+              todayUsedBytes: 0,
+              usagePercent:
+                  (500000000 / package.advertisedTotalQuotaBytes) * 100,
+              todayPercentOfTarget: 0,
+            );
+          },
+    );
+
+    await tester.pumpWidget(_app(_FakeAuth(user), dashboard));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Target: 1,00 GB', findRichText: true), findsOneWidget);
+    expect(find.text('7,00 GB'), findsOneWidget);
+    expect(find.textContaining('belum tersedia'), findsNothing);
+
+    dashboard.dispose();
+  });
+
   testWidgets('paket nyata tampil di Dashboard bersama status izin', (
     tester,
   ) async {
@@ -171,7 +244,8 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     final packageRepo = InMemoryPackageRepository();
-    final usageRepo = InMemoryUsageRepository(packageRepo);
+    final categoryRepo = InMemoryQuotaCategoryRepository(packageRepo);
+    final usageRepo = InMemoryUsageRepository(packageRepo, categoryRepo);
 
     final now = DateTime.now();
 
@@ -196,6 +270,7 @@ void main() {
       usageRepo,
       _Usage(false),
       _Alert(),
+      categoryRepo: categoryRepo,
     );
 
     await tester.pumpWidget(_app(_FakeAuth(user), dashboard));
@@ -203,6 +278,8 @@ void main() {
 
     expect(find.textContaining('Paket Bulanan 30 GB'), findsOneWidget);
     expect(find.text('Izin belum diberikan'), findsOneWidget);
+    expect(find.text('Sisa per Kategori'), findsOneWidget);
+    expect(find.text('Kuota Utama'), findsOneWidget);
     expect(find.text('Masukkan Pemakaian'), findsOneWidget);
 
     dashboard.dispose();

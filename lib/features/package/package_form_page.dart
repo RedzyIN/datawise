@@ -244,7 +244,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
     final result = await showModalBottomSheet<_CategoryEditorResult>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: PkgPalette.of(context).card,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -278,7 +278,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
     final result = await showModalBottomSheet<_CategoryEditorResult>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: PkgPalette.of(context).card,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -317,7 +317,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
     final result = await showModalBottomSheet<_CategoryEditorResult>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: PkgPalette.of(context).card,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -358,7 +358,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
     final result = await showModalBottomSheet<_CategoryEditorResult>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: PkgPalette.of(context).card,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -496,15 +496,15 @@ class _PackageFormPageState extends State<PackageFormPage> {
     return InputDecoration(
       hintText: hint,
       suffixText: suffix,
-      suffixStyle: const TextStyle(color: PkgColors.muted, fontSize: 12),
+      suffixStyle: TextStyle(color: PkgPalette.of(context).muted, fontSize: 12),
       filled: true,
-      fillColor: PkgColors.field,
+      fillColor: PkgPalette.of(context).field,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       border: border(null),
       enabledBorder: border(null),
-      focusedBorder: border(PkgColors.primary, 1.5),
-      errorBorder: border(PkgColors.danger),
-      focusedErrorBorder: border(PkgColors.danger, 1.5),
+      focusedBorder: border(PkgPalette.of(context).primary, 1.5),
+      errorBorder: border(PkgPalette.of(context).danger),
+      focusedErrorBorder: border(PkgPalette.of(context).danger, 1.5),
     );
   }
 
@@ -516,17 +516,20 @@ class _PackageFormPageState extends State<PackageFormPage> {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
-                color: PkgColors.text,
+                color: PkgPalette.of(context).text,
               ),
             ),
           ),
           if (trailing != null)
             Text(
               trailing,
-              style: const TextStyle(color: PkgColors.muted, fontSize: 12),
+              style: TextStyle(
+                color: PkgPalette.of(context).muted,
+                fontSize: 12,
+              ),
             ),
         ],
       ),
@@ -543,7 +546,9 @@ class _PackageFormPageState extends State<PackageFormPage> {
           child: Container(
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: selected ? Colors.white : Colors.transparent,
+              color: selected
+                  ? PkgPalette.of(context).onPrimary
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
@@ -551,7 +556,9 @@ class _PackageFormPageState extends State<PackageFormPage> {
               style: TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 13,
-                color: selected ? PkgColors.primary : PkgColors.muted,
+                color: selected
+                    ? PkgPalette.of(context).primary
+                    : PkgPalette.of(context).muted,
               ),
             ),
           ),
@@ -564,7 +571,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
       height: 44,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: PkgColors.field,
+        color: PkgPalette.of(context).field,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(children: [seg(_Unit.gb, 'GB'), seg(_Unit.mb, 'MB')]),
@@ -585,7 +592,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
         Expanded(
           child: TextFormField(
             controller: controller,
-            style: const TextStyle(fontSize: 18, color: PkgColors.text),
+            style: TextStyle(fontSize: 18, color: PkgPalette.of(context).text),
             decoration: _fieldDecoration(
               hint: hint,
               suffix: showSuffix ? 'Besaran' : null,
@@ -613,7 +620,9 @@ class _PackageFormPageState extends State<PackageFormPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
         decoration: BoxDecoration(
-          color: selected ? PkgColors.primary : PkgColors.field,
+          color: selected
+              ? PkgPalette.of(context).primary
+              : PkgPalette.of(context).field,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
@@ -623,8 +632,8 @@ class _PackageFormPageState extends State<PackageFormPage> {
               Container(
                 width: 7,
                 height: 7,
-                decoration: const BoxDecoration(
-                  color: PkgColors.accent,
+                decoration: BoxDecoration(
+                  color: PkgPalette.of(context).accent,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -635,7 +644,9 @@ class _PackageFormPageState extends State<PackageFormPage> {
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 13,
-                color: selected ? Colors.white : PkgColors.muted,
+                color: selected
+                    ? PkgPalette.of(context).onPrimary
+                    : PkgPalette.of(context).muted,
               ),
             ),
           ],
@@ -652,7 +663,9 @@ class _PackageFormPageState extends State<PackageFormPage> {
           height: 40,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: selected ? PkgColors.primary : PkgColors.field,
+            color: selected
+                ? PkgPalette.of(context).primary
+                : PkgPalette.of(context).field,
             borderRadius: BorderRadius.circular(14),
           ),
           child: Text(
@@ -660,7 +673,9 @@ class _PackageFormPageState extends State<PackageFormPage> {
             style: TextStyle(
               fontWeight: FontWeight.w700,
               fontSize: 12,
-              color: selected ? Colors.white : PkgColors.muted,
+              color: selected
+                  ? PkgPalette.of(context).onPrimary
+                  : PkgPalette.of(context).muted,
             ),
           ),
         ),
@@ -677,14 +692,16 @@ class _PackageFormPageState extends State<PackageFormPage> {
         children: [
           Text(
             label,
-            style: const TextStyle(color: PkgColors.muted, fontSize: 12),
+            style: TextStyle(color: PkgPalette.of(context).muted, fontSize: 12),
           ),
           Text(
             formatDate(date),
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w800,
-              color: bold ? PkgColors.primary : PkgColors.text,
+              color: bold
+                  ? PkgPalette.of(context).primary
+                  : PkgPalette.of(context).text,
             ),
           ),
         ],
@@ -697,13 +714,13 @@ class _PackageFormPageState extends State<PackageFormPage> {
         child: Container(
           width: 38,
           height: 38,
-          decoration: const BoxDecoration(
-            color: PkgColors.chip,
+          decoration: BoxDecoration(
+            color: PkgPalette.of(context).chip,
             shape: BoxShape.circle,
           ),
-          child: const Icon(
+          child: Icon(
             Icons.edit_calendar,
-            color: PkgColors.primary,
+            color: PkgPalette.of(context).primary,
             size: 20,
           ),
         ),
@@ -713,16 +730,16 @@ class _PackageFormPageState extends State<PackageFormPage> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: PkgColors.field,
+        color: PkgPalette.of(context).field,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.calendar_month,
-                color: PkgColors.primary,
+                color: PkgPalette.of(context).primary,
                 size: 22,
               ),
               const SizedBox(width: 10),
@@ -735,22 +752,22 @@ class _PackageFormPageState extends State<PackageFormPage> {
             child: Row(
               children: [
                 _dot(),
-                const Expanded(child: Divider(color: PkgColors.chip)),
-                const Icon(
+                Expanded(child: Divider(color: PkgPalette.of(context).chip)),
+                Icon(
                   Icons.arrow_forward,
                   size: 16,
-                  color: PkgColors.primary,
+                  color: PkgPalette.of(context).primary,
                 ),
-                const Expanded(child: Divider(color: PkgColors.chip)),
+                Expanded(child: Divider(color: PkgPalette.of(context).chip)),
                 _dot(),
               ],
             ),
           ),
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.event_available,
-                color: PkgColors.primary,
+                color: PkgPalette.of(context).primary,
                 size: 22,
               ),
               const SizedBox(width: 10),
@@ -775,8 +792,8 @@ class _PackageFormPageState extends State<PackageFormPage> {
   Widget _dot() => Container(
     width: 8,
     height: 8,
-    decoration: const BoxDecoration(
-      color: PkgColors.primary,
+    decoration: BoxDecoration(
+      color: PkgPalette.of(context).primary,
       shape: BoxShape.circle,
     ),
   );
@@ -800,16 +817,19 @@ class _PackageFormPageState extends State<PackageFormPage> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: PkgColors.text,
+                    color: PkgPalette.of(context).text,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: const TextStyle(color: PkgColors.muted, fontSize: 12),
+                  style: TextStyle(
+                    color: PkgPalette.of(context).muted,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
@@ -817,10 +837,10 @@ class _PackageFormPageState extends State<PackageFormPage> {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeThumbColor: Colors.white,
-            activeTrackColor: PkgColors.primary,
-            inactiveThumbColor: Colors.white,
-            inactiveTrackColor: PkgColors.chip,
+            activeThumbColor: PkgPalette.of(context).onPrimary,
+            activeTrackColor: PkgPalette.of(context).primary,
+            inactiveThumbColor: PkgPalette.of(context).onPrimary,
+            inactiveTrackColor: PkgPalette.of(context).chip,
             trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
           ),
         ],
@@ -853,22 +873,22 @@ class _PackageFormPageState extends State<PackageFormPage> {
                   '$name (${_typeCode(type)})',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     height: 1.2,
                     fontWeight: FontWeight.w600,
-                    color: PkgColors.text,
+                    color: PkgPalette.of(context).text,
                   ),
                 ),
               ),
               const SizedBox(width: 8),
               Text(
                 formatBytes(capacityBytes),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   height: 1.2,
                   fontWeight: FontWeight.w800,
-                  color: PkgColors.text,
+                  color: PkgPalette.of(context).text,
                 ),
               ),
             ],
@@ -881,7 +901,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
   /// Satu kotak untuk seluruh baris kategori, sesuai desain.
   Widget _categoryGroup(List<Widget> rows) {
     return Material(
-      color: PkgColors.field,
+      color: PkgPalette.of(context).field,
       borderRadius: BorderRadius.circular(14),
       clipBehavior: Clip.antiAlias,
       child: Padding(
@@ -902,7 +922,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
             message,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: PkgColors.muted, fontSize: 12),
+            style: TextStyle(color: PkgPalette.of(context).muted, fontSize: 12),
           ),
         ),
       ),
@@ -919,19 +939,22 @@ class _PackageFormPageState extends State<PackageFormPage> {
       children: [
         Row(
           children: [
-            const Expanded(
+            Expanded(
               child: Text(
                 'Pembagian Kategori Kuota',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 14,
-                  color: PkgColors.text,
+                  color: PkgPalette.of(context).text,
                 ),
               ),
             ),
             Text(
               '$count Kategori',
-              style: const TextStyle(color: PkgColors.muted, fontSize: 12),
+              style: TextStyle(
+                color: PkgPalette.of(context).muted,
+                fontSize: 12,
+              ),
             ),
           ],
         ),
@@ -945,20 +968,24 @@ class _PackageFormPageState extends State<PackageFormPage> {
             height: 44,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: PkgColors.chip,
+              color: PkgPalette.of(context).chip,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: const Row(
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.tune, size: 18, color: PkgColors.primary),
-                SizedBox(width: 8),
+                Icon(
+                  Icons.tune,
+                  size: 18,
+                  color: PkgPalette.of(context).primary,
+                ),
+                const SizedBox(width: 8),
                 Text(
                   'Atur Kategori & Aturan Kuota',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 13,
-                    color: PkgColors.primary,
+                    color: PkgPalette.of(context).primary,
                   ),
                 ),
               ],
@@ -1037,7 +1064,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
     return Consumer2<PackageProvider, QuotaCategoryProvider>(
       builder: (context, provider, categoryProvider, child) {
         return Scaffold(
-          backgroundColor: PkgColors.bg,
+          backgroundColor: PkgPalette.of(context).bg,
           appBar: const PkgAppBar(title: 'Paket Kuota'),
           body: Form(
             key: _formKey,
@@ -1050,10 +1077,10 @@ class _PackageFormPageState extends State<PackageFormPage> {
                     Expanded(
                       child: Text(
                         _isEditing ? 'Ubah Paket Kuota' : 'Tambah Paket Kuota',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w800,
-                          color: PkgColors.text,
+                          color: PkgPalette.of(context).text,
                         ),
                       ),
                     ),
@@ -1065,13 +1092,13 @@ class _PackageFormPageState extends State<PackageFormPage> {
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: PkgColors.dangerBg,
+                          color: PkgPalette.of(context).dangerBg,
                           borderRadius: BorderRadius.circular(999),
                         ),
-                        child: const Text(
+                        child: Text(
                           'Batal',
                           style: TextStyle(
-                            color: PkgColors.danger,
+                            color: PkgPalette.of(context).danger,
                             fontWeight: FontWeight.w800,
                             fontSize: 14,
                           ),
@@ -1090,9 +1117,9 @@ class _PackageFormPageState extends State<PackageFormPage> {
                       _label('Nama Paket', trailing: 'Wajib diisi'),
                       TextFormField(
                         controller: _nameController,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
-                          color: PkgColors.text,
+                          color: PkgPalette.of(context).text,
                         ),
                         decoration: _fieldDecoration(
                           hint: 'Contoh: Paket Bulanan 30 GB',
@@ -1212,8 +1239,8 @@ class _PackageFormPageState extends State<PackageFormPage> {
                   height: 48,
                   child: FilledButton.icon(
                     style: FilledButton.styleFrom(
-                      backgroundColor: PkgColors.primary,
-                      foregroundColor: Colors.white,
+                      backgroundColor: PkgPalette.of(context).primary,
+                      foregroundColor: PkgPalette.of(context).onPrimary,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
@@ -1224,12 +1251,12 @@ class _PackageFormPageState extends State<PackageFormPage> {
                     ),
                     onPressed: provider.isLoading ? null : _savePackage,
                     icon: provider.isLoading
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.white,
+                              color: PkgPalette.of(context).onPrimary,
                             ),
                           )
                         : const Icon(Icons.save_outlined, size: 18),
@@ -1366,7 +1393,9 @@ class _CategoryEditorSheetState extends State<_CategoryEditorSheet> {
           height: 42,
           padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
-            color: selected ? PkgColors.accent : PkgColors.field,
+            color: selected
+                ? PkgPalette.of(context).accent
+                : PkgPalette.of(context).field,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
@@ -1374,7 +1403,9 @@ class _CategoryEditorSheetState extends State<_CategoryEditorSheet> {
               Icon(
                 quotaCategoryTypeIcon(type),
                 size: 16,
-                color: selected ? PkgColors.text : PkgColors.muted,
+                color: selected
+                    ? PkgPalette.of(context).text
+                    : PkgPalette.of(context).muted,
               ),
               const SizedBox(width: 5),
               Expanded(
@@ -1385,7 +1416,9 @@ class _CategoryEditorSheetState extends State<_CategoryEditorSheet> {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: selected ? PkgColors.text : PkgColors.muted,
+                    color: selected
+                        ? PkgPalette.of(context).text
+                        : PkgPalette.of(context).muted,
                   ),
                 ),
               ),
@@ -1405,7 +1438,9 @@ class _CategoryEditorSheetState extends State<_CategoryEditorSheet> {
         child: Container(
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: selected ? Colors.white : Colors.transparent,
+            color: selected
+                ? PkgPalette.of(context).onPrimary
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),
           child: Text(
@@ -1413,7 +1448,9 @@ class _CategoryEditorSheetState extends State<_CategoryEditorSheet> {
             style: TextStyle(
               fontWeight: FontWeight.w800,
               fontSize: 13,
-              color: selected ? PkgColors.primary : PkgColors.muted,
+              color: selected
+                  ? PkgPalette.of(context).primary
+                  : PkgPalette.of(context).muted,
             ),
           ),
         ),
@@ -1441,16 +1478,19 @@ class _CategoryEditorSheetState extends State<_CategoryEditorSheet> {
                   Expanded(
                     child: Text(
                       widget.title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
-                        color: PkgColors.text,
+                        color: PkgPalette.of(context).text,
                       ),
                     ),
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close, color: PkgColors.muted),
+                    icon: Icon(
+                      Icons.close,
+                      color: PkgPalette.of(context).muted,
+                    ),
                   ),
                 ],
               ),
@@ -1473,16 +1513,19 @@ class _CategoryEditorSheetState extends State<_CategoryEditorSheet> {
               const SizedBox(height: 14),
               TextField(
                 controller: _nameController,
-                style: const TextStyle(fontSize: 15, color: PkgColors.text),
-                decoration: const InputDecoration(
+                style: TextStyle(
+                  fontSize: 15,
+                  color: PkgPalette.of(context).text,
+                ),
+                decoration: InputDecoration(
                   hintText: 'Nama kategori',
                   filled: true,
-                  fillColor: PkgColors.field,
-                  contentPadding: EdgeInsets.symmetric(
+                  fillColor: PkgPalette.of(context).field,
+                  contentPadding: const EdgeInsets.symmetric(
                     horizontal: 14,
                     vertical: 12,
                   ),
-                  border: OutlineInputBorder(borderSide: BorderSide.none),
+                  border: const OutlineInputBorder(borderSide: BorderSide.none),
                 ),
               ),
               const SizedBox(height: 10),
@@ -1492,9 +1535,9 @@ class _CategoryEditorSheetState extends State<_CategoryEditorSheet> {
                   Expanded(
                     child: TextField(
                       controller: _capacityController,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 18,
-                        color: PkgColors.text,
+                        color: PkgPalette.of(context).text,
                       ),
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
@@ -1502,20 +1545,22 @@ class _CategoryEditorSheetState extends State<_CategoryEditorSheet> {
                       inputFormatters: [
                         FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]')),
                       ],
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText: '5',
                         suffixText: 'Besaran',
                         suffixStyle: TextStyle(
-                          color: PkgColors.muted,
+                          color: PkgPalette.of(context).muted,
                           fontSize: 12,
                         ),
                         filled: true,
-                        fillColor: PkgColors.field,
-                        contentPadding: EdgeInsets.symmetric(
+                        fillColor: PkgPalette.of(context).field,
+                        contentPadding: const EdgeInsets.symmetric(
                           horizontal: 14,
                           vertical: 12,
                         ),
-                        border: OutlineInputBorder(borderSide: BorderSide.none),
+                        border: const OutlineInputBorder(
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                   ),
@@ -1525,7 +1570,7 @@ class _CategoryEditorSheetState extends State<_CategoryEditorSheet> {
                     height: 44,
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: PkgColors.field,
+                      color: PkgPalette.of(context).field,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Row(
@@ -1541,13 +1586,19 @@ class _CategoryEditorSheetState extends State<_CategoryEditorSheet> {
               Text(
                 'Sisa kuota utama yang dapat dialokasikan: '
                 '${formatBytes(widget.availableBytes)}.',
-                style: const TextStyle(color: PkgColors.muted, fontSize: 12),
+                style: TextStyle(
+                  color: PkgPalette.of(context).muted,
+                  fontSize: 12,
+                ),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 6),
                 Text(
                   _error!,
-                  style: const TextStyle(color: PkgColors.danger, fontSize: 12),
+                  style: TextStyle(
+                    color: PkgPalette.of(context).danger,
+                    fontSize: 12,
+                  ),
                 ),
               ],
               const SizedBox(height: 16),
@@ -1560,12 +1611,12 @@ class _CategoryEditorSheetState extends State<_CategoryEditorSheet> {
                         width: 48,
                         height: 48,
                         decoration: BoxDecoration(
-                          color: PkgColors.dangerBg,
+                          color: PkgPalette.of(context).dangerBg,
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.delete_outline,
-                          color: PkgColors.danger,
+                          color: PkgPalette.of(context).danger,
                         ),
                       ),
                     ),
@@ -1576,8 +1627,8 @@ class _CategoryEditorSheetState extends State<_CategoryEditorSheet> {
                       height: 48,
                       child: FilledButton(
                         style: FilledButton.styleFrom(
-                          backgroundColor: PkgColors.primary,
-                          foregroundColor: Colors.white,
+                          backgroundColor: PkgPalette.of(context).primary,
+                          foregroundColor: PkgPalette.of(context).onPrimary,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
