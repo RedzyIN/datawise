@@ -4,6 +4,7 @@
 // Begitu pengguna login dan ada paket aktif, halaman otomatis memakai data nyata dari
 // DashboardProvider (paket dari repository, hasil PlannerService, status izin).
 // Halaman ini hanya MENAMPILKAN data; tidak ada rumus kuota di sini.
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -47,15 +48,20 @@ String _gbShort(num bytes) {
 
 String _longDate(DateTime d) => '${d.day} ${_bulan[d.month - 1]}';
 
+String _shortDate(DateTime d) =>
+    '${d.day} ${_bulan[d.month - 1].substring(0, 3)}';
+
 class _Bar {
   const _Bar(
     this.label,
-    this.fraction, {
+    this.bytes, {
+    required this.date,
     this.isToday = false,
     this.highlight = false,
   });
   final String label;
-  final double fraction; // 0..1 tinggi relatif
+  final int bytes;
+  final DateTime date;
   final bool isToday;
   final bool highlight;
 }
@@ -93,6 +99,9 @@ class _DashView {
     required this.targetText,
     required this.averageText,
     required this.tooltip,
+    this.todayPercentLabel,
+    this.weekPercentLabel,
+    this.targetBytes,
     required this.packageForNav,
     this.categories = const [],
     this.unclassifiedBytes = 0,
@@ -111,8 +120,10 @@ class _DashView {
   final double todayProgress;
   final String weekValue, weekSubtitle, weekFooter;
   final double weekProgress;
+  final String? todayPercentLabel, weekPercentLabel;
   final List<_Bar> bars;
   final double? targetFraction;
+  final int? targetBytes;
   final String targetText, averageText, tooltip;
   final DataPackage packageForNav;
   final List<_Cat> categories;
@@ -127,6 +138,15 @@ class _DashView {
   /// Data contoh pekan 1 — sama dengan frame Figma.
   factory _DashView.mock() {
     final now = DateTime.now();
+    final mockBytes = <int>[
+      918000000,
+      1162800000,
+      1224000000,
+      841500000,
+      1071000000,
+      1025100000,
+      841500000,
+    ];
     return _DashView(
       userName: 'Sarah',
       operatorName: 'Telkomsel',
@@ -142,20 +162,24 @@ class _DashView {
       todayTarget: '1,53 GB',
       todayBadge: 'Aman',
       todayProgress: .59,
+      todayPercentLabel: '59%',
       weekValue: '10,71 GB',
       weekSubtitle: 'Minggu ke-3 Siklus',
       weekFooter: 'Penghematan +14%',
       weekProgress: .72,
-      bars: const [
-        _Bar('Sen', .60),
-        _Bar('Sel', .76),
-        _Bar('Rab', .80, highlight: true),
-        _Bar('Kam', .55),
-        _Bar('Jum', .70),
-        _Bar('Sab', .67),
-        _Bar('Min', .55, isToday: true),
+      weekPercentLabel: '72%',
+      bars: [
+        for (var i = 0; i < 7; i++)
+          _Bar(
+            _hari[now.subtract(Duration(days: 6 - i)).weekday - 1],
+            mockBytes[i],
+            date: now.subtract(Duration(days: 6 - i)),
+            isToday: i == 6,
+            highlight: i == 2,
+          ),
       ],
       targetFraction: .72,
+      targetBytes: 1530000000,
       targetText: '1,53 GB',
       averageText: '1,12 GB',
       tooltip: '1,53 GB',
@@ -199,7 +223,7 @@ class _DashView {
       final day = today.subtract(Duration(days: 6 - i));
       return (date: day, bytes: d.dailyUsage[day] ?? 0);
     });
-    final weekUsed = days.fold<int>(0, (a, b) => a + b.bytes);
+    final last7Used = days.fold<int>(0, (a, b) => a + b.bytes);
     final dailyTarget = plan?.dailyTargetBytes;
     var maxV = days
         .fold<int>(0, (a, b) => b.bytes > a ? b.bytes : a)
@@ -218,8 +242,24 @@ class _DashView {
 
     final pct = plan?.todayPercentOfTarget;
     final weeklyTarget = plan?.weeklyTargetBytes;
-    final cycleWeek =
-        (today.difference(dateOnly(pkg.startDate)).inDays ~/ 7) + 1;
+    final packageStart = dateOnly(pkg.startDate);
+    final cycleWeek = (today.difference(packageStart).inDays ~/ 7) + 1;
+    final cycleStart = packageStart.add(Duration(days: (cycleWeek - 1) * 7));
+    final packageEnd = dateOnly(pkg.endDate);
+    final lastCycleDay = packageEnd.isBefore(today) ? packageEnd : today;
+
+    // Hanya pemakaian pada minggu siklus berjalan yang dihitung, sehingga
+    // data minggu sebelumnya tidak ikut tercampur ke target mingguan.
+    var cycleUsed = 0;
+    for (final entry in d.dailyUsage.entries) {
+      if (entry.key.isBefore(cycleStart)) continue;
+      if (entry.key.isAfter(lastCycleDay)) continue;
+      cycleUsed += entry.value;
+    }
+
+    final weekPct = (weeklyTarget != null && weeklyTarget > 0)
+        ? cycleUsed / weeklyTarget * 100
+        : null;
 
     String? daysLeft;
     if (plan != null) daysLeft = '${plan.remainingDays} hari';
@@ -241,17 +281,23 @@ class _DashView {
           ? '—'
           : (pct > 100 ? 'Melebihi' : (pct >= 80 ? 'Hampir' : 'Aman')),
       todayProgress: pct != null ? (pct / 100).clamp(0.0, 1.0) : 0,
+      todayPercentLabel: pct == null ? null : '${pct.toStringAsFixed(0)}%',
       weekValue: weeklyTarget != null ? _gb(weeklyTarget) : '—',
       weekSubtitle: 'Minggu ke-${cycleWeek < 1 ? 1 : cycleWeek} Siklus',
-      weekFooter: 'Terpakai ${_gb(weekUsed)}',
+      weekFooter: 'Terpakai ${_gb(cycleUsed)}',
       weekProgress: (weeklyTarget != null && weeklyTarget > 0)
-          ? (weekUsed / weeklyTarget).clamp(0.0, 1.0)
+          ? (cycleUsed / weeklyTarget).clamp(0.0, 1.0)
           : 0,
+      weekPercentLabel: weekPct == null
+          ? null
+          : '${weekPct.toStringAsFixed(0)}%',
+      targetBytes: dailyTarget?.round(),
       bars: [
         for (var i = 0; i < 7; i++)
           _Bar(
             _hari[days[i].date.weekday - 1],
-            (days[i].bytes / maxV).clamp(0.03, 1.0),
+            days[i].bytes,
+            date: days[i].date,
             isToday: i == 6,
             highlight: i == brightIdx,
           ),
@@ -260,7 +306,7 @@ class _DashView {
           ? (dailyTarget / maxV).clamp(0.0, 1.0)
           : null,
       targetText: dailyTarget != null ? _gb(dailyTarget) : '—',
-      averageText: _gb(weekUsed / 7),
+      averageText: _gb(last7Used / 7),
       tooltip: _gb(days.last.bytes),
       // Kapasitas dan pemakaian kategori berasal dari repository lewat Provider.
       // Pemakaian yang belum terklasifikasi tetap ditampilkan terpisah dan tidak
@@ -1096,6 +1142,7 @@ class _DailyWeekly extends StatelessWidget {
                 ),
               ),
               progress: v.todayProgress,
+              progressLabel: v.todayPercentLabel,
             ),
           ),
           SizedBox(width: _u(8)),
@@ -1140,6 +1187,7 @@ class _DailyWeekly extends StatelessWidget {
                 ],
               ),
               progress: v.weekProgress,
+              progressLabel: v.weekPercentLabel,
             ),
           ),
         ],
@@ -1192,12 +1240,17 @@ class _MetricCard extends StatelessWidget {
     required this.subtitle,
     required this.progress,
     this.footer,
+    this.progressLabel,
   });
 
   final String title, value;
   final Widget trailing, subtitle;
   final Widget? footer;
   final double progress;
+
+  /// Persentase aktual terhadap target. Bisa melebihi 100% walau progress bar
+  /// tetap dibatasi penuh.
+  final String? progressLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -1234,14 +1287,31 @@ class _MetricCard extends StatelessWidget {
           if (footer != null) ...[SizedBox(height: _u(3)), footer!],
           const Spacer(),
           SizedBox(height: _u(7)),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: _u(4),
-              backgroundColor: pal.line,
-              valueColor: AlwaysStoppedAnimation(pal.primaryDeep),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: _u(4),
+                    backgroundColor: pal.line,
+                    valueColor: AlwaysStoppedAnimation(pal.primaryDeep),
+                  ),
+                ),
+              ),
+              if (progressLabel != null) ...[
+                SizedBox(width: _u(6)),
+                Text(
+                  progressLabel!,
+                  style: TextStyle(
+                    color: pal.ink,
+                    fontSize: _u(7.5),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ),
@@ -1258,7 +1328,14 @@ class _WeeklyChart extends StatelessWidget {
   Widget build(BuildContext context) {
     final pal = AppPageColors.of(context);
 
-    final plotH = _u(92);
+    final plotH = _u(96);
+    final maxBar = v.bars.fold<int>(
+      0,
+      (max, bar) => bar.bytes > max ? bar.bytes : max,
+    );
+    final targetBytes = v.targetBytes ?? 0;
+    final peak = maxBar > targetBytes ? maxBar : targetBytes;
+    final maxY = peak <= 0 ? 1.0 : peak * 1.25;
     return Container(
       padding: EdgeInsets.fromLTRB(_u(11), _u(11), _u(11), _u(9)),
       decoration: _cardDecoration(pal, radius: 13),
@@ -1288,109 +1365,118 @@ class _WeeklyChart extends StatelessWidget {
             'Rerata ${v.averageText} / hari',
             style: TextStyle(color: pal.muted, fontSize: _u(7.5)),
           ),
-          SizedBox(height: _u(16)), // ruang untuk tooltip di atas batang
+          SizedBox(height: _u(14)),
           SizedBox(
             height: plotH,
-            child: Stack(
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    for (final b in v.bars)
-                      Expanded(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: _u(3)),
-                          child: Align(
-                            alignment: Alignment.bottomCenter,
-                            child: FractionallySizedBox(
-                              heightFactor: b.fraction,
-                              widthFactor: 1,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: b.isToday
-                                      ? pal.primaryDeep
-                                      : (b.highlight
-                                            ? pal.barBright
-                                            : pal.barPale),
-                                  borderRadius: BorderRadius.vertical(
-                                    top: Radius.circular(_u(5)),
-                                  ),
-                                ),
-                                child: b.isToday
-                                    ? Stack(
-                                        clipBehavior: Clip.none,
-                                        children: [
-                                          Positioned(
-                                            top: -_u(14),
-                                            left: -_u(8),
-                                            right: -_u(8),
-                                            child: Center(
-                                              child: Container(
-                                                padding: EdgeInsets.symmetric(
-                                                  horizontal: _u(4),
-                                                  vertical: _u(2),
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  color: pal.mint,
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                        _u(4),
-                                                      ),
-                                                ),
-                                                child: Text(
-                                                  v.tooltip,
-                                                  maxLines: 1,
-                                                  softWrap: false,
-                                                  style: TextStyle(
-                                                    color: pal.primary,
-                                                    fontSize: _u(6.5),
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      )
-                                    : null,
-                              ),
-                            ),
+            child: BarChart(
+              BarChartData(
+                minY: 0,
+                maxY: maxY,
+                alignment: BarChartAlignment.spaceAround,
+                barGroups: [
+                  for (var i = 0; i < v.bars.length; i++)
+                    BarChartGroupData(
+                      x: i,
+                      // Nilai hari ini tetap terlihat tanpa harus disentuh.
+                      showingTooltipIndicators: v.bars[i].isToday
+                          ? const [0]
+                          : const [],
+                      barRods: [
+                        BarChartRodData(
+                          toY: v.bars[i].bytes.toDouble(),
+                          width: _u(14),
+                          color: v.bars[i].isToday
+                              ? pal.primaryDeep
+                              : (v.bars[i].highlight
+                                    ? pal.barBright
+                                    : pal.barPale),
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(_u(5)),
                           ),
                         ),
-                      ),
-                  ],
+                      ],
+                    ),
+                ],
+                barTouchData: BarTouchData(
+                  enabled: true,
+                  touchTooltipData: BarTouchTooltipData(
+                    getTooltipColor: (_) => pal.ink,
+                    tooltipBorderRadius: BorderRadius.circular(_u(4)),
+                    tooltipPadding: EdgeInsets.symmetric(
+                      horizontal: _u(5),
+                      vertical: _u(3),
+                    ),
+                    tooltipMargin: _u(6),
+                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                      final bar = v.bars[group.x];
+
+                      return BarTooltipItem(
+                        '${bar.label}, ${_shortDate(bar.date)}\n'
+                        '${_gb(bar.bytes)}',
+                        TextStyle(
+                          color: pal.surface,
+                          fontSize: _u(7),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      );
+                    },
+                  ),
                 ),
-                if (v.targetFraction != null)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: v.targetFraction! * plotH,
-                    child: CustomPaint(
-                      size: const Size(double.infinity, 1),
-                      painter: _DashedLine(pal.muted),
+                extraLinesData: v.targetBytes == null
+                    ? const ExtraLinesData()
+                    : ExtraLinesData(
+                        horizontalLines: [
+                          HorizontalLine(
+                            y: v.targetBytes!.toDouble(),
+                            color: pal.muted,
+                            strokeWidth: 1,
+                            dashArray: const [4, 3],
+                          ),
+                        ],
+                      ),
+                titlesData: FlTitlesData(
+                  show: true,
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  leftTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: _u(18),
+                      getTitlesWidget: (value, meta) {
+                        final index = value.toInt();
+                        if (index < 0 || index >= v.bars.length) {
+                          return const SizedBox.shrink();
+                        }
+                        final bar = v.bars[index];
+
+                        return Padding(
+                          padding: EdgeInsets.only(top: _u(6)),
+                          child: Text(
+                            bar.label,
+                            style: TextStyle(
+                              color: bar.isToday ? pal.ink : pal.muted,
+                              fontSize: _u(7.5),
+                              fontWeight: bar.isToday
+                                  ? FontWeight.w800
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
-              ],
+                ),
+                gridData: const FlGridData(show: false),
+                borderData: FlBorderData(show: false),
+              ),
             ),
-          ),
-          SizedBox(height: _u(5)),
-          Row(
-            children: [
-              for (final b in v.bars)
-                Expanded(
-                  child: Center(
-                    child: Text(
-                      b.label,
-                      style: TextStyle(
-                        color: b.isToday ? pal.ink : pal.muted,
-                        fontSize: _u(7.5),
-                        fontWeight: b.isToday
-                            ? FontWeight.w800
-                            : FontWeight.normal,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
           ),
         ],
       ),
@@ -1421,6 +1507,11 @@ class _CategoryCard extends StatelessWidget {
               fontSize: _u(10),
               fontWeight: FontWeight.w700,
             ),
+          ),
+          SizedBox(height: _u(2)),
+          Text(
+            'Pemakaian paket ${v.usedText} dari ${v.totalText}',
+            style: TextStyle(color: pal.muted, fontSize: _u(7.5)),
           ),
           SizedBox(height: _u(8)),
           for (final c in v.categories) ...[
@@ -1461,6 +1552,11 @@ class _CategoryCard extends StatelessWidget {
                 valueColor: AlwaysStoppedAnimation(pal.primaryDeep),
               ),
             ),
+            SizedBox(height: _u(3)),
+            Text(
+              'Terpakai ${_gb(c.usedBytes)} dari ${_gbShort(c.quotaBytes)}',
+              style: TextStyle(color: pal.muted, fontSize: _u(7.5)),
+            ),
             SizedBox(height: _u(8)),
           ],
           if (v.unclassifiedBytes > 0) ...[
@@ -1484,8 +1580,9 @@ class _CategoryCard extends StatelessWidget {
             ),
             SizedBox(height: _u(2)),
             Text(
-              'Pemakaian dari statistik perangkat belum dapat dipisahkan per '
-              'aplikasi, sehingga tidak dibebankan ke kategori mana pun.',
+              'Pemakaian ini belum memiliki alokasi kategori sehingga tidak '
+              'dibebankan ke kategori mana pun, tetapi tetap dihitung pada '
+              'pemakaian paket di atas.',
               style: TextStyle(color: pal.muted, fontSize: _u(7.5)),
             ),
             SizedBox(height: _u(8)),
@@ -1560,27 +1657,6 @@ class _PlannerNotice extends StatelessWidget {
       ),
     );
   }
-}
-
-class _DashedLine extends CustomPainter {
-  const _DashedLine(this.color);
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1;
-    var x = 0.0;
-    while (x < size.width) {
-      canvas.drawLine(Offset(x, 0), Offset(x + 3, 0), paint);
-      x += 6;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter old) => false;
 }
 
 class _PrimaryButton extends StatelessWidget {

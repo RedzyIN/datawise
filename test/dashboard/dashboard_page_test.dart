@@ -5,6 +5,7 @@ import 'package:datawise/models/models.dart';
 import 'package:datawise/repositories/repositories.dart';
 import 'package:datawise/services/alert_service.dart';
 import 'package:datawise/services/usage_service.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -292,6 +293,53 @@ void main() {
     expect(find.text('Sisa per Kategori'), findsOneWidget);
     expect(find.text('Kuota Utama'), findsOneWidget);
     expect(find.text('Masukkan Pemakaian'), findsOneWidget);
+
+    dashboard.dispose();
+  });
+
+  testWidgets('grafik batang interaktif memakai data tujuh hari', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(412, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final packageRepo = InMemoryPackageRepository();
+    final categoryRepo = InMemoryQuotaCategoryRepository(packageRepo);
+    final usageRepo = InMemoryUsageRepository(packageRepo, categoryRepo);
+
+    final now = DateTime.now();
+
+    final id = await packageRepo.add(
+      DataPackage(
+        userId: 'u1',
+        packageName: 'Paket Bulanan 30 GB',
+        advertisedTotalQuotaBytes: 30000000000,
+        startDate: dateOnly(now.subtract(const Duration(days: 5))),
+        endDate: dateOnly(now.add(const Duration(days: 25))),
+        status: PackageStatus.active,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+
+    await _addDeviceUsage(usageRepo, id, now, 900000000);
+
+    final dashboard = DashboardProvider(
+      packageRepo,
+      usageRepo,
+      _Usage(false),
+      _Alert(),
+      categoryRepo: categoryRepo,
+    );
+
+    await tester.pumpWidget(_app(_FakeAuth(user), dashboard));
+    await tester.pumpAndSettle();
+
+    final chart = tester.widget<BarChart>(find.byType(BarChart));
+
+    expect(chart.data.barGroups, hasLength(7));
+    expect(chart.data.barTouchData.enabled, isTrue);
+    expect(chart.data.barGroups.last.barRods.single.toY, 900000000);
 
     dashboard.dispose();
   });

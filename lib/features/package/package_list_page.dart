@@ -342,10 +342,46 @@ class _PackageListPageState extends State<PackageListPage> {
     );
   }
 
+  Widget _quotaStat(String label, String value) {
+    final pal = PkgPalette.of(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: pal.card,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(color: pal.muted, fontSize: 11)),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: pal.text,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _runningCard(DataPackage p) {
     final isMain = p.status == PackageStatus.active;
     final frac = timeLeftFraction(p);
     final (value, unit) = splitBytes(p.advertisedTotalQuotaBytes);
+
+    // Pemakaian dihitung oleh Provider dari catatan pemakaian yang sama
+    // dengan Dashboard, sehingga tidak dihitung dua kali.
+    final used = context.read<PackageProvider>().usedBytesFor(p.id);
+    final remaining = p.advertisedTotalQuotaBytes - used < 0
+        ? 0
+        : p.advertisedTotalQuotaBytes - used;
 
     return PkgCard(
       child: Column(
@@ -457,6 +493,16 @@ class _PackageListPageState extends State<PackageListPage> {
                     backgroundColor: PkgPalette.of(context).chip,
                     color: PkgPalette.of(context).primary,
                   ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(child: _quotaStat('Terpakai', formatBytes(used))),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _quotaStat('Sisa Kuota', formatBytes(remaining)),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 10),
                 Row(

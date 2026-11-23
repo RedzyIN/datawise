@@ -123,7 +123,7 @@ List<SingleChildWidget> buildAppProviders() {
       create: (_) => ThemeProvider(settingsRepo),
     ),
     ChangeNotifierProvider<PackageProvider>(
-      create: (_) => PackageProvider(packageRepo),
+      create: (_) => PackageProvider(packageRepo, usageRepo: usageRepo),
     ),
     ChangeNotifierProvider<QuotaCategoryProvider>(
       create: (_) => QuotaCategoryProvider(categoryRepo),

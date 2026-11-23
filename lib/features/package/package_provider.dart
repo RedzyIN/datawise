@@ -2,20 +2,83 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/models.dart';
 import '../../repositories/package_repository.dart';
+import '../../repositories/usage_repository.dart';
+import '../../services/usage_totals.dart';
 import 'package_validator.dart';
 
 class PackageProvider extends ChangeNotifier {
-  PackageProvider(PackageRepository repository) : _repository = repository;
+  PackageProvider(PackageRepository repository, {this.usageRepo})
+    : _repository = repository;
 
   final PackageRepository _repository;
 
+  /// Opsional agar daftar paket tetap dapat dipakai tanpa modul pemakaian.
+  final UsageRepository? usageRepo;
+
   List<DataPackage> _packages = [];
+  final Map<String, int> _usedBytesByPackage = {};
+
   bool _isLoading = false;
   String? _errorMessage;
 
   List<DataPackage> get packages => _packages;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+
+  /// Pemakaian efektif (mobile) yang tercatat untuk satu paket.
+  /// Angka ini memakai aturan yang sama dengan Dashboard sehingga
+  /// DEVICE_TOTAL dan APP_USAGE tidak dijumlahkan bersamaan.
+  int usedBytesFor(String? packageId) {
+    if (packageId == null) return 0;
+    return _usedBytesByPackage[packageId] ?? 0;
+  }
+
+  int remainingBytesFor(DataPackage package) {
+    final remaining =
+        package.advertisedTotalQuotaBytes - usedBytesFor(package.id);
+    return remaining < 0 ? 0 : remaining;
+  }
+
+  /// Memuat pemakaian satu paket, misalnya saat halaman detail dibuka langsung.
+  Future<void> loadUsageFor(DataPackage package) async {
+    final packageId = package.id;
+    final repo = usageRepo;
+    if (packageId == null || repo == null) return;
+
+    try {
+      final used = totalEffectiveUsageBytes(await repo.getRecords(packageId));
+
+      if (_usedBytesByPackage[packageId] == used) return;
+
+      _usedBytesByPackage[packageId] = used;
+      notifyListeners();
+    } catch (_) {
+      // Kegagalan memuat pemakaian tidak boleh menggagalkan informasi paket.
+    }
+  }
+
+  Future<void> _loadUsageTotals(List<DataPackage> packages) async {
+    final repo = usageRepo;
+    if (repo == null) return;
+
+    for (final package in packages) {
+      final packageId = package.id;
+      if (packageId == null) continue;
+
+      try {
+        _usedBytesByPackage[packageId] = totalEffectiveUsageBytes(
+          await repo.getRecords(packageId),
+        );
+      } catch (_) {
+        // Biarkan angka lama (atau 0) jika catatan pemakaian gagal dibaca.
+      }
+    }
+  }
+
+  Future<void> _reload(String userId) async {
+    _packages = await _repository.getAll(userId);
+    await _loadUsageTotals(_packages);
+  }
 
   /// Paket utama (ACTIVE) yang belum kedaluwarsa.
   DataPackage? get activePackage {
@@ -50,7 +113,7 @@ class PackageProvider extends ChangeNotifier {
       }
 
       await _repository.markExpired(userId);
-      _packages = await _repository.getAll(userId);
+      await _reload(userId);
     } on AppException catch (e) {
       _errorMessage = e.message;
     } catch (_) {
@@ -78,7 +141,7 @@ class PackageProvider extends ChangeNotifier {
         initialUsedBytes: initialUsedBytes,
       );
 
-      _packages = await _repository.getAll(package.userId);
+      await _reload(package.userId);
     });
   }
 
@@ -95,7 +158,7 @@ class PackageProvider extends ChangeNotifier {
 
       await _repository.update(package);
 
-      _packages = await _repository.getAll(package.userId);
+      await _reload(package.userId);
     });
   }
 
@@ -113,7 +176,7 @@ class PackageProvider extends ChangeNotifier {
         ),
       );
 
-      _packages = await _repository.getAll(userId);
+      await _reload(userId);
     });
   }
 
@@ -132,7 +195,7 @@ class PackageProvider extends ChangeNotifier {
     return _run(() async {
       await _ownedPackage(packageId, userId);
       await _repository.delete(packageId);
-      _packages = await _repository.getAll(userId);
+      await _reload(userId);
     });
   }
 
@@ -148,7 +211,7 @@ class PackageProvider extends ChangeNotifier {
 
       await _repository.setActive(userId, packageId);
 
-      _packages = await _repository.getAll(userId);
+      await _reload(userId);
     });
   }
 
