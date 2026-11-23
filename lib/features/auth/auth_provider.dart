@@ -1,6 +1,7 @@
 // PEMILIK: Anggota A. Nama kelas dan anggota dibekukan (kontrak #3).
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart' show FirebaseAuthException;
 import 'package:flutter/foundation.dart';
 
 import '../../models/models.dart';
@@ -11,13 +12,14 @@ enum AuthStatus { unknown, authenticated, unauthenticated }
 
 class AuthProvider extends ChangeNotifier {
   AuthProvider(this._service, [this._userRepository]) {
-    // Profil lokal disimpan sebelum status authenticated diterbitkan ke UI.
+    // Pemulihan sesi saat aplikasi dibuka kembali.
     _subscription = _service.authStateChanges().listen(
       (user) {
         if (_ignoreAuthEvents) return;
         unawaited(_handleAuthStateChange(user));
       },
-      onError: (_) {
+      onError: (Object error, StackTrace stack) {
+        logAuthFailure('authStateChanges', error, stack);
         _setUser(null);
         notifyListeners();
       },
@@ -30,8 +32,8 @@ class AuthProvider extends ChangeNotifier {
   final UserRepository? _userRepository;
   late final StreamSubscription<AppUser?> _subscription;
 
-  // Registrasi langsung membuat sesi Firebase. Event itu ditahan sampai
-  // profil lokal tersimpan dan sesi registrasi ditutup.
+  // Login/registrasi mengurus profilnya sendiri. Event sesi yang datang di
+  // tengah proses ditahan agar tidak ada dua penulisan SQLite bersamaan.
   bool _ignoreAuthEvents = false;
 
   AuthStatus _status = AuthStatus.unknown;
@@ -44,38 +46,48 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  /// Menyimpan profil ke SQLite lalu melengkapi nama dari SQLite
-  /// bila Firebase belum mengembalikan nama.
-  Future<AppUser> _persistAndResolve(AppUser user) async {
+  /// Menyimpan profil ke SQLite lalu melengkapi nama dari SQLite bila
+  /// Firebase belum mengembalikan nama.
+  ///
+  /// Autentikasi Firebase dan profil lokal adalah dua sistem berbeda:
+  /// kegagalan profil lokal hanya dicatat untuk developer dan tidak boleh
+  /// membatalkan sesi yang sudah berhasil.
+  Future<AppUser> _syncProfile(AppUser user) async {
     final repo = _userRepository;
     if (repo == null) return user;
 
-    await repo.upsert(user);
+    try {
+      await repo.upsert(user);
+    } catch (error, stack) {
+      logAuthFailure('profile.upsert(${user.uid})', error, stack);
+      return user;
+    }
+
     if (user.displayName != null && user.displayName!.trim().isNotEmpty) {
       return user;
     }
 
-    final stored = await repo.getById(user.uid);
-    return AppUser(
-      uid: user.uid,
-      displayName: stored?.displayName,
-      email: user.email,
-    );
+    try {
+      final stored = await repo.getById(user.uid);
+      final storedName = stored?.displayName;
+      if (storedName == null || storedName.trim().isEmpty) return user;
+
+      return AppUser(uid: user.uid, displayName: storedName, email: user.email);
+    } catch (error, stack) {
+      logAuthFailure('profile.getById(${user.uid})', error, stack);
+      return user;
+    }
   }
 
   Future<bool> login(String email, String password) {
     return _run(() async {
-      final user = await _service.login(email, password);
-      late final AppUser resolved;
+      _ignoreAuthEvents = true;
       try {
-        resolved = await _persistAndResolve(user);
-      } catch (_) {
-        try {
-          await _service.logout();
-        } catch (_) {}
-        rethrow;
+        final user = await _service.login(email, password);
+        _setUser(await _syncProfile(user));
+      } finally {
+        _ignoreAuthEvents = false;
       }
-      _setUser(resolved);
     });
   }
 
@@ -90,13 +102,8 @@ class AuthProvider extends ChangeNotifier {
           password,
           displayName: name,
         );
-        await _userRepository?.upsert(user);
-        await _service.logout();
-      } catch (_) {
-        try {
-          await _service.logout();
-        } catch (_) {}
-        rethrow;
+        await _syncProfile(user);
+        await _logoutQuietly();
       } finally {
         _ignoreAuthEvents = false;
       }
@@ -119,21 +126,21 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _handleAuthStateChange(AppUser? user) async {
-    try {
-      if (user != null) {
-        _setUser(await _persistAndResolve(user));
-      } else {
-        _setUser(null);
-      }
-    } catch (_) {
-      _errorMessage = _unknownErrorMessage;
+    if (user != null) {
+      _setUser(await _syncProfile(user));
+    } else {
       _setUser(null);
-      try {
-        await _service.logout();
-      } catch (_) {}
     }
 
     notifyListeners();
+  }
+
+  Future<void> _logoutQuietly() async {
+    try {
+      await _service.logout();
+    } catch (error, stack) {
+      logAuthFailure('logout', error, stack);
+    }
   }
 
   Future<bool> _run(Future<void> Function() action) async {
@@ -146,8 +153,15 @@ class AuthProvider extends ChangeNotifier {
       return true;
     } on AppException catch (e) {
       _errorMessage = e.message;
+      debugPrint('[DATAWISE auth] gagal (${e.code}): ${e.message}');
       return false;
-    } catch (_) {
+    } on FirebaseAuthException catch (e, stack) {
+      // Jaring pengaman bila ada layanan yang belum memetakan error Firebase.
+      logAuthFailure('unhandled FirebaseAuthException', e, stack);
+      _errorMessage = mapFirebaseAuthException(e).message;
+      return false;
+    } catch (error, stack) {
+      logAuthFailure('unexpected', error, stack);
       _errorMessage = _unknownErrorMessage;
       return false;
     } finally {

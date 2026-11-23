@@ -67,7 +67,7 @@ class _PackageListPageState extends State<PackageListPage> {
         final history = all.where((p) => !_isRunning(p)).toList();
 
         return ColoredBox(
-          color: PkgColors.bg,
+          color: PkgPalette.of(context).bg,
           child: Column(
             children: [
               if (widget.showHeader) _brandHeader(),
@@ -91,7 +91,7 @@ class _PackageListPageState extends State<PackageListPage> {
         padding: const EdgeInsets.fromLTRB(20, 10, 16, 6),
         child: Row(
           children: [
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -100,21 +100,24 @@ class _PackageListPageState extends State<PackageListPage> {
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
-                      color: PkgColors.primary,
+                      color: PkgPalette.of(context).primary,
                     ),
                   ),
                   Text(
                     'Paket',
-                    style: TextStyle(fontSize: 13, color: PkgColors.text),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: PkgPalette.of(context).text,
+                    ),
                   ),
                 ],
               ),
             ),
             IconButton(
               onPressed: () {},
-              icon: const Icon(
+              icon: Icon(
                 Icons.notifications_none,
-                color: PkgColors.text,
+                color: PkgPalette.of(context).text,
                 size: 26,
               ),
             ),
@@ -135,13 +138,13 @@ class _PackageListPageState extends State<PackageListPage> {
     final children = <Widget>[
       Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Text(
               'Daftar Paket',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
-                color: PkgColors.text,
+                color: PkgPalette.of(context).text,
               ),
             ),
           ),
@@ -149,9 +152,9 @@ class _PackageListPageState extends State<PackageListPage> {
         ],
       ),
       const SizedBox(height: 2),
-      const Text(
+      Text(
         'Kelola paket aktif dan kuota tambahan dengan cermat.',
-        style: TextStyle(color: PkgColors.muted, fontSize: 12),
+        style: TextStyle(color: PkgPalette.of(context).muted, fontSize: 12),
       ),
       const SizedBox(height: 14),
       SingleChildScrollView(
@@ -194,7 +197,7 @@ class _PackageListPageState extends State<PackageListPage> {
             padding: const EdgeInsets.only(bottom: 12),
             child: Text(
               provider.errorMessage!,
-              style: const TextStyle(color: PkgColors.danger),
+              style: TextStyle(color: PkgPalette.of(context).danger),
             ),
           ),
         );
@@ -206,12 +209,12 @@ class _PackageListPageState extends State<PackageListPage> {
       if (showRunning) {
         if (running.isEmpty) {
           children.add(
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
               child: Center(
                 child: Text(
                   'Belum ada paket aktif.',
-                  style: TextStyle(color: PkgColors.muted),
+                  style: TextStyle(color: PkgPalette.of(context).muted),
                 ),
               ),
             ),
@@ -230,22 +233,27 @@ class _PackageListPageState extends State<PackageListPage> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Text(
-                'Riwayat Paket',
-                style: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  color: PkgColors.text,
+              // Expanded + ellipsis agar judul menyusut pada layar sempit
+              // alih-alih mendorong "Lihat Semua" keluar dari Row.
+              Expanded(
+                child: Text(
+                  'Riwayat Paket',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                    color: PkgPalette.of(context).text,
+                  ),
                 ),
               ),
-              const Spacer(),
               if (_tab != _Tab.expired)
                 GestureDetector(
                   onTap: () => setState(() => _tab = _Tab.expired),
-                  child: const Text(
+                  child: Text(
                     'Lihat Semua',
                     style: TextStyle(
-                      color: PkgColors.primary,
+                      color: PkgPalette.of(context).primary,
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
                     ),
@@ -258,11 +266,11 @@ class _PackageListPageState extends State<PackageListPage> {
 
         if (history.isEmpty) {
           children.add(
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 14),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
               child: Text(
                 'Belum ada riwayat paket.',
-                style: TextStyle(color: PkgColors.muted),
+                style: TextStyle(color: PkgPalette.of(context).muted),
               ),
             ),
           );
@@ -291,7 +299,9 @@ class _PackageListPageState extends State<PackageListPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? PkgColors.primary : Colors.white,
+          color: selected
+              ? PkgPalette.of(context).primary
+              : PkgPalette.of(context).card,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
@@ -301,14 +311,18 @@ class _PackageListPageState extends State<PackageListPage> {
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 13,
-                color: selected ? Colors.white : PkgColors.text,
+                color: selected
+                    ? PkgPalette.of(context).onPrimary
+                    : PkgPalette.of(context).text,
               ),
             ),
             const SizedBox(width: 6),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
               decoration: BoxDecoration(
-                color: selected ? PkgColors.field : PkgColors.chip,
+                color: selected
+                    ? PkgPalette.of(context).field
+                    : PkgPalette.of(context).chip,
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
@@ -316,7 +330,9 @@ class _PackageListPageState extends State<PackageListPage> {
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 10,
-                  color: selected ? PkgColors.primary : PkgColors.muted,
+                  color: selected
+                      ? PkgPalette.of(context).primary
+                      : PkgPalette.of(context).muted,
                 ),
               ),
             ),
@@ -348,18 +364,18 @@ class _PackageListPageState extends State<PackageListPage> {
                       p.packageName,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: PkgColors.text,
+                        color: PkgPalette.of(context).text,
                       ),
                     ),
                     if ((p.operatorName ?? '').isNotEmpty)
                       Text(
                         p.operatorName!,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
-                          color: PkgColors.muted,
+                          color: PkgPalette.of(context).muted,
                         ),
                       ),
                   ],
@@ -373,7 +389,7 @@ class _PackageListPageState extends State<PackageListPage> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: PkgColors.field,
+              color: PkgPalette.of(context).field,
               borderRadius: BorderRadius.circular(18),
             ),
             child: Column(
@@ -383,10 +399,10 @@ class _PackageListPageState extends State<PackageListPage> {
                   children: [
                     Text(
                       value,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w800,
-                        color: PkgColors.primary,
+                        color: PkgPalette.of(context).primary,
                         height: 1,
                       ),
                     ),
@@ -395,10 +411,10 @@ class _PackageListPageState extends State<PackageListPage> {
                       padding: const EdgeInsets.only(bottom: 2),
                       child: Text(
                         '$unit total',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 12,
-                          color: PkgColors.muted,
+                          color: PkgPalette.of(context).muted,
                         ),
                       ),
                     ),
@@ -411,18 +427,18 @@ class _PackageListPageState extends State<PackageListPage> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.trending_up,
                                 size: 16,
-                                color: PkgColors.primary,
+                                color: PkgPalette.of(context).primary,
                               ),
                               const SizedBox(width: 4),
                               Text(
                                 'Sisa waktu ${(frac * 100).round()}%',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   fontSize: 13,
-                                  color: PkgColors.primary,
+                                  color: PkgPalette.of(context).primary,
                                 ),
                               ),
                             ],
@@ -438,32 +454,35 @@ class _PackageListPageState extends State<PackageListPage> {
                   child: LinearProgressIndicator(
                     value: frac,
                     minHeight: 6,
-                    backgroundColor: PkgColors.chip,
-                    color: PkgColors.primary,
+                    backgroundColor: PkgPalette.of(context).chip,
+                    color: PkgPalette.of(context).primary,
                   ),
                 ),
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.schedule,
                       size: 16,
-                      color: PkgColors.muted,
+                      color: PkgPalette.of(context).muted,
                     ),
                     const SizedBox(width: 6),
-                    const Text(
+                    Text(
                       'Masa Aktif',
-                      style: TextStyle(color: PkgColors.muted, fontSize: 13),
+                      style: TextStyle(
+                        color: PkgPalette.of(context).muted,
+                        fontSize: 13,
+                      ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         '${p.daysRemaining()} hari lagi (${formatDate(p.endDate)})',
                         textAlign: TextAlign.end,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 13,
-                          color: PkgColors.text,
+                          color: PkgPalette.of(context).text,
                         ),
                       ),
                     ),
@@ -475,16 +494,19 @@ class _PackageListPageState extends State<PackageListPage> {
           const SizedBox(height: 10),
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.verified_user_outlined,
                 size: 18,
-                color: PkgColors.primary,
+                color: PkgPalette.of(context).primary,
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   isMain ? 'Paket utama aktif' : 'Paket tambahan',
-                  style: const TextStyle(color: PkgColors.text, fontSize: 13),
+                  style: TextStyle(
+                    color: PkgPalette.of(context).text,
+                    fontSize: 13,
+                  ),
                 ),
               ),
               InkWell(
@@ -496,23 +518,23 @@ class _PackageListPageState extends State<PackageListPage> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: PkgColors.chip,
+                    color: PkgPalette.of(context).chip,
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
                       Text(
                         'Lihat Rincian',
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 13,
-                          color: PkgColors.primary,
+                          color: PkgPalette.of(context).primary,
                         ),
                       ),
                       Icon(
                         Icons.chevron_right,
                         size: 16,
-                        color: PkgColors.primary,
+                        color: PkgPalette.of(context).primary,
                       ),
                     ],
                   ),
@@ -536,19 +558,27 @@ class _PackageListPageState extends State<PackageListPage> {
             Container(
               width: 36,
               height: 36,
-              decoration: const BoxDecoration(
-                color: PkgColors.accent,
+              decoration: BoxDecoration(
+                color: PkgPalette.of(context).accent,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.add, color: PkgColors.primary, size: 21),
+              child: Icon(
+                Icons.add,
+                color: PkgPalette.of(context).primary,
+                size: 21,
+              ),
             ),
             const SizedBox(width: 12),
-            const Text(
-              'Tambah Paket Baru',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: PkgColors.primary,
+            Flexible(
+              child: Text(
+                'Tambah Paket Baru',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: PkgPalette.of(context).primary,
+                ),
               ),
             ),
           ],
@@ -567,7 +597,7 @@ class _PackageListPageState extends State<PackageListPage> {
             PkgIconBox(
               p.isArchived ? Icons.archive_outlined : Icons.event_busy_outlined,
               size: 38,
-              bg: PkgColors.chip,
+              bg: PkgPalette.of(context).chip,
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -578,10 +608,10 @@ class _PackageListPageState extends State<PackageListPage> {
                     p.packageName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
-                      color: PkgColors.text,
+                      color: PkgPalette.of(context).text,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -590,8 +620,8 @@ class _PackageListPageState extends State<PackageListPage> {
                     '${formatDate(p.endDate)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: PkgColors.muted,
+                    style: TextStyle(
+                      color: PkgPalette.of(context).muted,
                       fontSize: 12,
                     ),
                   ),

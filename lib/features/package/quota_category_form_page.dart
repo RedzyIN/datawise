@@ -244,15 +244,15 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
     return InputDecoration(
       hintText: hint,
       suffixText: suffix,
-      suffixStyle: const TextStyle(color: PkgColors.muted, fontSize: 12),
+      suffixStyle: TextStyle(color: PkgPalette.of(context).muted, fontSize: 12),
       filled: true,
-      fillColor: PkgColors.field,
+      fillColor: PkgPalette.of(context).field,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       border: border(null),
       enabledBorder: border(null),
-      focusedBorder: border(PkgColors.primary, 1.5),
-      errorBorder: border(PkgColors.danger),
-      focusedErrorBorder: border(PkgColors.danger, 1.5),
+      focusedBorder: border(PkgPalette.of(context).primary, 1.5),
+      errorBorder: border(PkgPalette.of(context).danger),
+      focusedErrorBorder: border(PkgPalette.of(context).danger, 1.5),
     );
   }
 
@@ -264,17 +264,20 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
-                color: PkgColors.text,
+                color: PkgPalette.of(context).text,
               ),
             ),
           ),
           if (trailing != null)
             Text(
               trailing,
-              style: const TextStyle(color: PkgColors.muted, fontSize: 12),
+              style: TextStyle(
+                color: PkgPalette.of(context).muted,
+                fontSize: 12,
+              ),
             ),
         ],
       ),
@@ -291,7 +294,9 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
           child: Container(
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: selected ? Colors.white : Colors.transparent,
+              color: selected
+                  ? PkgPalette.of(context).onPrimary
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
@@ -299,7 +304,9 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
               style: TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 13,
-                color: selected ? PkgColors.primary : PkgColors.muted,
+                color: selected
+                    ? PkgPalette.of(context).primary
+                    : PkgPalette.of(context).muted,
               ),
             ),
           ),
@@ -312,7 +319,7 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
       height: 44,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: PkgColors.field,
+        color: PkgPalette.of(context).field,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(children: [seg(_Unit.gb, 'GB'), seg(_Unit.mb, 'MB')]),
@@ -329,14 +336,18 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
         height: 44,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          color: selected ? PkgColors.accent : PkgColors.field,
+          color: selected
+              ? PkgPalette.of(context).accent
+              : PkgPalette.of(context).field,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
           children: [
             Icon(
               quotaCategoryTypeIcon(type),
-              color: locked && !selected ? PkgColors.muted : PkgColors.text,
+              color: locked && !selected
+                  ? PkgPalette.of(context).muted
+                  : PkgPalette.of(context).text,
               size: 18,
             ),
             const SizedBox(width: 6),
@@ -348,14 +359,16 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 12,
-                  color: locked && !selected ? PkgColors.muted : PkgColors.text,
+                  color: locked && !selected
+                      ? PkgPalette.of(context).muted
+                      : PkgPalette.of(context).text,
                 ),
               ),
             ),
             if (selected)
-              const Icon(
+              Icon(
                 Icons.check_circle_outline,
-                color: PkgColors.text,
+                color: PkgPalette.of(context).text,
                 size: 18,
               ),
           ],
@@ -372,12 +385,16 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: PkgColors.field,
+        color: PkgPalette.of(context).field,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
-          const Icon(Icons.event_outlined, color: PkgColors.primary, size: 20),
+          Icon(
+            Icons.event_outlined,
+            color: PkgPalette.of(context).primary,
+            size: 20,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -385,14 +402,17 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(color: PkgColors.muted, fontSize: 12),
+                  style: TextStyle(
+                    color: PkgPalette.of(context).muted,
+                    fontSize: 12,
+                  ),
                 ),
                 Text(
                   formatDate(date),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
-                    color: PkgColors.text,
+                    color: PkgPalette.of(context).text,
                   ),
                 ),
               ],
@@ -403,13 +423,13 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
             child: Container(
               width: 34,
               height: 34,
-              decoration: const BoxDecoration(
-                color: PkgColors.chip,
+              decoration: BoxDecoration(
+                color: PkgPalette.of(context).chip,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.edit_calendar,
-                color: PkgColors.primary,
+                color: PkgPalette.of(context).primary,
                 size: 18,
               ),
             ),
@@ -436,16 +456,19 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
             children: [
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: PkgColors.text,
+                  color: PkgPalette.of(context).text,
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: const TextStyle(color: PkgColors.muted, fontSize: 12),
+                style: TextStyle(
+                  color: PkgPalette.of(context).muted,
+                  fontSize: 12,
+                ),
               ),
             ],
           ),
@@ -453,10 +476,10 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
         Switch(
           value: value,
           onChanged: onChanged,
-          activeThumbColor: Colors.white,
-          activeTrackColor: PkgColors.primary,
-          inactiveThumbColor: Colors.white,
-          inactiveTrackColor: PkgColors.chip,
+          activeThumbColor: PkgPalette.of(context).onPrimary,
+          activeTrackColor: PkgPalette.of(context).primary,
+          inactiveThumbColor: PkgPalette.of(context).onPrimary,
+          inactiveTrackColor: PkgPalette.of(context).chip,
           trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
         ),
       ],
@@ -470,7 +493,7 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
         final available = _availableBytes(provider);
 
         return Scaffold(
-          backgroundColor: PkgColors.bg,
+          backgroundColor: PkgPalette.of(context).bg,
           appBar: const PkgAppBar(title: 'Kategori Kuota'),
           body: Form(
             key: _formKey,
@@ -484,10 +507,10 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
                         _isEditing
                             ? 'Ubah Kategori Kuota'
                             : 'Tambah Kategori Kuota',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w800,
-                          color: PkgColors.text,
+                          color: PkgPalette.of(context).text,
                         ),
                       ),
                     ),
@@ -499,13 +522,13 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: PkgColors.dangerBg,
+                          color: PkgPalette.of(context).dangerBg,
                           borderRadius: BorderRadius.circular(999),
                         ),
-                        child: const Text(
+                        child: Text(
                           'Batal',
                           style: TextStyle(
-                            color: PkgColors.danger,
+                            color: PkgPalette.of(context).danger,
                             fontWeight: FontWeight.w800,
                             fontSize: 14,
                           ),
@@ -524,9 +547,9 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
                       _label('Nama Kategori', trailing: 'Wajib diisi'),
                       TextFormField(
                         controller: _nameController,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
-                          color: PkgColors.text,
+                          color: PkgPalette.of(context).text,
                         ),
                         decoration: _fieldDecoration(
                           hint: 'Contoh: Kuota Malam',
@@ -572,9 +595,9 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
                           Expanded(
                             child: TextFormField(
                               controller: _capacityController,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 18,
-                                color: PkgColors.text,
+                                color: PkgPalette.of(context).text,
                               ),
                               decoration: _fieldDecoration(
                                 hint: '5',
@@ -605,8 +628,8 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
                             ? 'Kapasitas diambil dari kuota utama paket.'
                             : 'Sisa kuota utama yang dapat dialokasikan: '
                                   '${formatBytes(available)}.',
-                        style: const TextStyle(
-                          color: PkgColors.muted,
+                        style: TextStyle(
+                          color: PkgPalette.of(context).muted,
                           fontSize: 12,
                         ),
                       ),
@@ -656,8 +679,8 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
                   height: 48,
                   child: FilledButton.icon(
                     style: FilledButton.styleFrom(
-                      backgroundColor: PkgColors.primary,
-                      foregroundColor: Colors.white,
+                      backgroundColor: PkgPalette.of(context).primary,
+                      foregroundColor: PkgPalette.of(context).onPrimary,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
@@ -668,12 +691,12 @@ class _QuotaCategoryFormPageState extends State<QuotaCategoryFormPage> {
                     ),
                     onPressed: provider.isLoading ? null : _save,
                     icon: provider.isLoading
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.white,
+                              color: PkgPalette.of(context).onPrimary,
                             ),
                           )
                         : const Icon(Icons.save_outlined, size: 18),

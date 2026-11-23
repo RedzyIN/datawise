@@ -7,20 +7,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/theme.dart';
+
 import '../../core/constants.dart';
 import '../../core/routes.dart';
 import '../../models/models.dart';
 import '../auth/auth_provider.dart';
 import 'dashboard_provider.dart';
-
-const _teal = Color(0xFF00796F);
-const _deepTeal = Color(0xFF00695C);
-const _mint = Color(0xFFE4FBF7);
-const _ink = Color(0xFF073B3A);
-const _muted = Color(0xFF66817E);
-const _line = Color(0xFFD7F0EC);
-const _barPale = Color(0xFFC8EDE7);
-const _barBright = Color(0xFF7FEBDD);
 
 /// Frame Figma berukuran ±290 lebar; skala ini menyesuaikannya ke layar ponsel.
 const double _k = 1.2;
@@ -300,6 +293,8 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage>
     with WidgetsBindingObserver {
+  AppPageColors get pal => AppPageColors.of(context);
+
   @override
   void initState() {
     super.initState();
@@ -327,6 +322,8 @@ class _DashboardPageState extends State<DashboardPage>
 
   @override
   Widget build(BuildContext context) {
+    final pal = AppPageColors.of(context);
+
     final d = context.watch<DashboardProvider>();
     final user = context.watch<AuthProvider>().currentUser;
 
@@ -337,7 +334,7 @@ class _DashboardPageState extends State<DashboardPage>
     } else {
       switch (d.loadState) {
         case DashboardLoad.loading:
-          body = const Center(child: CircularProgressIndicator(color: _teal));
+          body = Center(child: CircularProgressIndicator(color: pal.primary));
         case DashboardLoad.error:
           body = _ErrorState(message: d.errorMessage, onRetry: _load);
         case DashboardLoad.noPackage:
@@ -349,11 +346,11 @@ class _DashboardPageState extends State<DashboardPage>
 
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFFE4FBF7), Color(0xFFF7FFFD)],
+            colors: [pal.background, pal.backgroundEnd],
           ),
         ),
         child: SafeArea(child: body),
@@ -370,7 +367,7 @@ class _DashboardPageState extends State<DashboardPage>
     bool preview = false,
   }) {
     return RefreshIndicator(
-      color: _teal,
+      color: pal.primary,
       onRefresh: _load,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -464,7 +461,7 @@ class _DashboardPageState extends State<DashboardPage>
       packageForNav: v.packageForNav,
     );
     return RefreshIndicator(
-      color: _teal,
+      color: pal.primary,
       onRefresh: _load,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -488,15 +485,15 @@ class _DashboardPageState extends State<DashboardPage>
           SizedBox(height: _u(16)),
           Container(
             padding: EdgeInsets.all(_u(20)),
-            decoration: _cardDecoration(radius: 14),
+            decoration: _cardDecoration(pal, radius: 14),
             child: Column(
               children: [
-                Icon(Icons.sim_card_outlined, size: _u(44), color: _muted),
+                Icon(Icons.sim_card_outlined, size: _u(44), color: pal.muted),
                 SizedBox(height: _u(10)),
                 Text(
                   'Belum ada paket aktif',
                   style: TextStyle(
-                    color: _ink,
+                    color: pal.ink,
                     fontWeight: FontWeight.w800,
                     fontSize: _u(12),
                   ),
@@ -505,7 +502,7 @@ class _DashboardPageState extends State<DashboardPage>
                 Text(
                   'Tambahkan paket data untuk mulai memantau sisa kuota.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: _muted, fontSize: _u(9.5)),
+                  style: TextStyle(color: pal.muted, fontSize: _u(9.5)),
                 ),
                 SizedBox(height: _u(12)),
                 _PrimaryButton(
@@ -526,7 +523,7 @@ class _DashboardPageState extends State<DashboardPage>
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppPageColors.of(context).surface,
       builder: (context) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
@@ -534,18 +531,18 @@ class _DashboardPageState extends State<DashboardPage>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Detail Aplikasi',
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
-                  color: _ink,
+                  color: pal.ink,
                 ),
               ),
               const SizedBox(height: 5),
-              const Text(
+              Text(
                 'Rincian penggunaan per aplikasi akan tersedia setelah klasifikasi pemakaian terhubung.',
-                style: TextStyle(color: _muted, fontSize: 12),
+                style: TextStyle(color: pal.muted, fontSize: 12),
               ),
               const SizedBox(height: 12),
               _InfoRow(
@@ -635,14 +632,21 @@ class _DashboardPageState extends State<DashboardPage>
 
 // ================================================================ widget
 
-BoxDecoration _cardDecoration({double radius = 14}) => BoxDecoration(
-  color: Colors.white,
-  borderRadius: BorderRadius.circular(_u(radius)),
-  border: Border.all(color: _line),
-  boxShadow: const [
-    BoxShadow(color: Color(0x0F00695C), blurRadius: 14, offset: Offset(0, 4)),
-  ],
-);
+BoxDecoration _cardDecoration(AppPageColors pal, {double radius = 14}) =>
+    BoxDecoration(
+      color: pal.surface,
+      borderRadius: BorderRadius.circular(_u(radius)),
+      border: Border.all(color: pal.line),
+      boxShadow: pal.isDark
+          ? null
+          : const [
+              BoxShadow(
+                color: Color(0x0F00695C),
+                blurRadius: 14,
+                offset: Offset(0, 4),
+              ),
+            ],
+    );
 
 class _Header extends StatelessWidget {
   const _Header({
@@ -656,6 +660,8 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pal = AppPageColors.of(context);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -668,7 +674,7 @@ class _Header extends StatelessWidget {
                   Text(
                     'DATAWISE',
                     style: TextStyle(
-                      color: _ink,
+                      color: pal.ink,
                       fontWeight: FontWeight.w800,
                       fontSize: _u(11),
                       letterSpacing: .4,
@@ -676,7 +682,7 @@ class _Header extends StatelessWidget {
                   ),
                   Text(
                     'Beranda',
-                    style: TextStyle(color: _muted, fontSize: _u(8)),
+                    style: TextStyle(color: pal.muted, fontSize: _u(8)),
                   ),
                 ],
               ),
@@ -687,7 +693,7 @@ class _Header extends StatelessWidget {
                 padding: EdgeInsets.all(_u(6)),
                 child: Icon(
                   Icons.notifications_none_rounded,
-                  color: _ink,
+                  color: pal.ink,
                   size: _u(17),
                 ),
               ),
@@ -696,11 +702,15 @@ class _Header extends StatelessWidget {
             Container(
               width: _u(26),
               height: _u(26),
-              decoration: const BoxDecoration(
-                color: Color(0xFFB9C9C6),
+              decoration: BoxDecoration(
+                color: pal.avatarBg,
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.person, color: Colors.white, size: _u(18)),
+              child: Icon(
+                Icons.person,
+                color: pal.isDark ? AppPalette.teksGelap : Colors.white,
+                size: _u(18),
+              ),
             ),
           ],
         ),
@@ -714,7 +724,7 @@ class _Header extends StatelessWidget {
                   Text(
                     'Halo, ${v.userName}!',
                     style: TextStyle(
-                      color: _ink,
+                      color: pal.ink,
                       fontWeight: FontWeight.w700,
                       fontSize: _u(15),
                     ),
@@ -729,7 +739,7 @@ class _Header extends StatelessWidget {
                             vertical: _u(3),
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFB9F3E9),
+                            color: pal.mint,
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Row(
@@ -738,13 +748,13 @@ class _Header extends StatelessWidget {
                               Icon(
                                 Icons.network_cell,
                                 size: _u(9),
-                                color: _teal,
+                                color: pal.primary,
                               ),
                               SizedBox(width: _u(3)),
                               Text(
                                 v.operatorName,
                                 style: TextStyle(
-                                  color: _teal,
+                                  color: pal.primary,
                                   fontSize: _u(8),
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -757,14 +767,14 @@ class _Header extends StatelessWidget {
                       Icon(
                         Icons.circle,
                         size: _u(5),
-                        color: v.connected ? _teal : Colors.orange,
+                        color: v.connected ? pal.primary : pal.warning,
                       ),
                       SizedBox(width: _u(4)),
                       Flexible(
                         child: Text(
                           v.connected ? 'Terhubung' : 'Izin belum diberikan',
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: _muted, fontSize: _u(8.5)),
+                          style: TextStyle(color: pal.muted, fontSize: _u(8.5)),
                         ),
                       ),
                     ],
@@ -777,14 +787,16 @@ class _Header extends StatelessWidget {
               child: Container(
                 width: _u(30),
                 height: _u(30),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
+                decoration: BoxDecoration(
+                  color: pal.surface,
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Color(0x1400695C),
+                      color: pal.isDark
+                          ? AppPalette.garisGelap
+                          : const Color(0x1400695C),
                       blurRadius: 8,
-                      offset: Offset(0, 2),
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
@@ -792,7 +804,7 @@ class _Header extends StatelessWidget {
                   v.connected
                       ? Icons.router_outlined
                       : Icons.portable_wifi_off_rounded,
-                  color: v.connected ? _teal : Colors.orange,
+                  color: v.connected ? pal.primary : pal.warning,
                   size: _u(16),
                 ),
               ),
@@ -812,6 +824,8 @@ class _PackageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pal = AppPageColors.of(context);
+
     final ratio = (v.usedPercent / 100).clamp(0.0, 1.0);
     return Material(
       color: Colors.transparent,
@@ -821,12 +835,12 @@ class _PackageCard extends StatelessWidget {
         child: Container(
           width: double.infinity,
           padding: EdgeInsets.all(_u(12)),
-          decoration: _cardDecoration(radius: 14).copyWith(
-            gradient: const LinearGradient(
+          decoration: _cardDecoration(pal, radius: 14).copyWith(
+            gradient: LinearGradient(
               begin: Alignment.topRight,
               end: Alignment.bottomLeft,
-              colors: [Color(0xFFD9FAF3), Colors.white, Colors.white],
-              stops: [0, .45, 1],
+              colors: [pal.surfaceAccent, pal.surface, pal.surface],
+              stops: const [0, .45, 1],
             ),
           ),
           child: Column(
@@ -839,7 +853,7 @@ class _PackageCard extends StatelessWidget {
                     child: Text(
                       'KONEKSI AKTIF',
                       style: TextStyle(
-                        color: _muted,
+                        color: pal.muted,
                         fontSize: _u(7.5),
                         letterSpacing: .6,
                       ),
@@ -851,13 +865,13 @@ class _PackageCard extends StatelessWidget {
                       vertical: _u(4),
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFD3F5EE),
+                      color: pal.mint,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
                       '${v.usedPercent}% terpakai',
                       style: TextStyle(
-                        color: _teal,
+                        color: pal.primary,
                         fontSize: _u(8),
                         fontWeight: FontWeight.w600,
                       ),
@@ -871,7 +885,7 @@ class _PackageCard extends StatelessWidget {
                 child: Text(
                   v.packageTitle,
                   style: TextStyle(
-                    color: _ink,
+                    color: pal.ink,
                     fontSize: _u(12),
                     height: 1.2,
                     fontWeight: FontWeight.w700,
@@ -886,7 +900,7 @@ class _PackageCard extends StatelessWidget {
                   Text(
                     v.remaining,
                     style: TextStyle(
-                      color: _ink,
+                      color: pal.ink,
                       fontSize: _u(24),
                       fontWeight: FontWeight.w800,
                     ),
@@ -895,13 +909,13 @@ class _PackageCard extends StatelessWidget {
                   Flexible(
                     child: Text.rich(
                       TextSpan(
-                        style: TextStyle(color: _muted, fontSize: _u(8.5)),
+                        style: TextStyle(color: pal.muted, fontSize: _u(8.5)),
                         children: [
                           const TextSpan(text: 'tersisa dari '),
                           TextSpan(
                             text: v.totalText,
-                            style: const TextStyle(
-                              color: _ink,
+                            style: TextStyle(
+                              color: pal.ink,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
@@ -918,19 +932,19 @@ class _PackageCard extends StatelessWidget {
                   height: _u(6),
                   child: Stack(
                     children: [
-                      const Positioned.fill(child: ColoredBox(color: _line)),
+                      Positioned.fill(child: ColoredBox(color: pal.line)),
                       Positioned.fill(
                         child: FractionallySizedBox(
                           alignment: Alignment.centerLeft,
                           widthFactor: ratio,
                           heightFactor: 1, // kunci tinggi isian = tinggi trek
-                          child: const DecoratedBox(
+                          child: DecoratedBox(
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.all(
+                              borderRadius: const BorderRadius.all(
                                 Radius.circular(20),
                               ),
                               gradient: LinearGradient(
-                                colors: [Color(0xFF6FF2E1), _deepTeal],
+                                colors: [pal.barBright, pal.primaryDeep],
                               ),
                             ),
                           ),
@@ -946,12 +960,12 @@ class _PackageCard extends StatelessWidget {
                 children: [
                   Text(
                     'Terpakai: ${v.usedText}',
-                    style: TextStyle(color: _muted, fontSize: _u(8)),
+                    style: TextStyle(color: pal.muted, fontSize: _u(8)),
                   ),
                   Text(
                     'Sisa ${100 - v.usedPercent}%',
                     style: TextStyle(
-                      color: _teal,
+                      color: pal.primary,
                       fontSize: _u(8),
                       fontWeight: FontWeight.w700,
                     ),
@@ -963,7 +977,7 @@ class _PackageCard extends StatelessWidget {
                   padding: EdgeInsets.only(top: _u(4)),
                   child: Text(
                     'Pemakaian melebihi kuota paket.',
-                    style: TextStyle(color: Colors.red, fontSize: _u(8)),
+                    style: TextStyle(color: pal.danger, fontSize: _u(8)),
                   ),
                 ),
               SizedBox(height: _u(8)),
@@ -974,17 +988,21 @@ class _PackageCard extends StatelessWidget {
                   vertical: _u(7),
                 ),
                 decoration: BoxDecoration(
-                  color: _mint,
+                  color: pal.mint,
                   borderRadius: BorderRadius.circular(_u(8)),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.event_available, color: _teal, size: _u(12)),
+                    Icon(
+                      Icons.event_available,
+                      color: pal.primary,
+                      size: _u(12),
+                    ),
                     SizedBox(width: _u(6)),
                     Expanded(
                       child: Text.rich(
                         TextSpan(
-                          style: TextStyle(color: _ink, fontSize: _u(8)),
+                          style: TextStyle(color: pal.ink, fontSize: _u(8)),
                           children: [
                             if (v.daysLeft != null) ...[
                               const TextSpan(text: 'Masa aktif tersisa '),
@@ -1019,6 +1037,8 @@ class _DailyWeekly extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pal = AppPageColors.of(context);
+
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1030,13 +1050,13 @@ class _DailyWeekly extends StatelessWidget {
               value: v.todayValue,
               subtitle: Text.rich(
                 TextSpan(
-                  style: TextStyle(color: _muted, fontSize: _u(8)),
+                  style: TextStyle(color: pal.muted, fontSize: _u(8)),
                   children: [
                     const TextSpan(text: 'Target: '),
                     TextSpan(
                       text: v.todayTarget,
-                      style: const TextStyle(
-                        color: _ink,
+                      style: TextStyle(
+                        color: pal.ink,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -1053,15 +1073,19 @@ class _DailyWeekly extends StatelessWidget {
               trailing: Container(
                 padding: EdgeInsets.all(_u(3)),
                 decoration: BoxDecoration(
-                  color: _mint,
+                  color: pal.mint,
                   borderRadius: BorderRadius.circular(_u(5)),
                 ),
-                child: Icon(Icons.grid_view_rounded, size: _u(9), color: _teal),
+                child: Icon(
+                  Icons.grid_view_rounded,
+                  size: _u(9),
+                  color: pal.primary,
+                ),
               ),
               value: v.weekValue,
               subtitle: Text(
                 v.weekSubtitle,
-                style: TextStyle(color: _muted, fontSize: _u(8)),
+                style: TextStyle(color: pal.muted, fontSize: _u(8)),
               ),
               footer: Row(
                 children: [
@@ -1070,13 +1094,17 @@ class _DailyWeekly extends StatelessWidget {
                       v.weekFooter,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: _teal,
+                        color: pal.primary,
                         fontSize: _u(8),
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
-                  Icon(Icons.trending_down_rounded, size: _u(10), color: _teal),
+                  Icon(
+                    Icons.trending_down_rounded,
+                    size: _u(10),
+                    color: pal.primary,
+                  ),
                 ],
               ),
               progress: v.weekProgress,
@@ -1094,30 +1122,34 @@ class _Badge extends StatelessWidget {
   final bool dot;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: EdgeInsets.symmetric(horizontal: _u(7), vertical: _u(3)),
-    decoration: BoxDecoration(
-      color: _mint,
-      borderRadius: BorderRadius.circular(20),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (dot) ...[
-          Icon(Icons.circle, size: _u(5), color: _teal),
-          SizedBox(width: _u(3)),
-        ],
-        Text(
-          label,
-          style: TextStyle(
-            color: _teal,
-            fontSize: _u(7.5),
-            fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    final pal = AppPageColors.of(context);
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: _u(7), vertical: _u(3)),
+      decoration: BoxDecoration(
+        color: pal.mint,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (dot) ...[
+            Icon(Icons.circle, size: _u(5), color: pal.primary),
+            SizedBox(width: _u(3)),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              color: pal.primary,
+              fontSize: _u(7.5),
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
 class _MetricCard extends StatelessWidget {
@@ -1137,9 +1169,11 @@ class _MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pal = AppPageColors.of(context);
+
     return Container(
       padding: EdgeInsets.all(_u(10)),
-      decoration: _cardDecoration(radius: 12),
+      decoration: _cardDecoration(pal, radius: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1148,7 +1182,7 @@ class _MetricCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: TextStyle(color: _muted, fontSize: _u(8)),
+                  style: TextStyle(color: pal.muted, fontSize: _u(8)),
                 ),
               ),
               trailing,
@@ -1158,7 +1192,7 @@ class _MetricCard extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              color: _ink,
+              color: pal.ink,
               fontSize: _u(15),
               fontWeight: FontWeight.w800,
             ),
@@ -1173,8 +1207,8 @@ class _MetricCard extends StatelessWidget {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: _u(4),
-              backgroundColor: _line,
-              valueColor: const AlwaysStoppedAnimation(_deepTeal),
+              backgroundColor: pal.line,
+              valueColor: AlwaysStoppedAnimation(pal.primaryDeep),
             ),
           ),
         ],
@@ -1190,10 +1224,12 @@ class _WeeklyChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pal = AppPageColors.of(context);
+
     final plotH = _u(92);
     return Container(
       padding: EdgeInsets.fromLTRB(_u(11), _u(11), _u(11), _u(9)),
-      decoration: _cardDecoration(radius: 13),
+      decoration: _cardDecoration(pal, radius: 13),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1203,7 +1239,7 @@ class _WeeklyChart extends StatelessWidget {
                 child: Text(
                   'Pemakaian 7 Hari Terakhir',
                   style: TextStyle(
-                    color: _ink,
+                    color: pal.ink,
                     fontSize: _u(10),
                     fontWeight: FontWeight.w700,
                   ),
@@ -1211,14 +1247,14 @@ class _WeeklyChart extends StatelessWidget {
               ),
               Text(
                 '- - -  Target (${v.targetText})',
-                style: TextStyle(color: _muted, fontSize: _u(7)),
+                style: TextStyle(color: pal.muted, fontSize: _u(7)),
               ),
             ],
           ),
           SizedBox(height: _u(1)),
           Text(
             'Rerata ${v.averageText} / hari',
-            style: TextStyle(color: _muted, fontSize: _u(7.5)),
+            style: TextStyle(color: pal.muted, fontSize: _u(7.5)),
           ),
           SizedBox(height: _u(16)), // ruang untuk tooltip di atas batang
           SizedBox(
@@ -1240,8 +1276,10 @@ class _WeeklyChart extends StatelessWidget {
                               child: DecoratedBox(
                                 decoration: BoxDecoration(
                                   color: b.isToday
-                                      ? _deepTeal
-                                      : (b.highlight ? _barBright : _barPale),
+                                      ? pal.primaryDeep
+                                      : (b.highlight
+                                            ? pal.barBright
+                                            : pal.barPale),
                                   borderRadius: BorderRadius.vertical(
                                     top: Radius.circular(_u(5)),
                                   ),
@@ -1261,7 +1299,7 @@ class _WeeklyChart extends StatelessWidget {
                                                   vertical: _u(2),
                                                 ),
                                                 decoration: BoxDecoration(
-                                                  color: _mint,
+                                                  color: pal.mint,
                                                   borderRadius:
                                                       BorderRadius.circular(
                                                         _u(4),
@@ -1272,7 +1310,7 @@ class _WeeklyChart extends StatelessWidget {
                                                   maxLines: 1,
                                                   softWrap: false,
                                                   style: TextStyle(
-                                                    color: _teal,
+                                                    color: pal.primary,
                                                     fontSize: _u(6.5),
                                                   ),
                                                 ),
@@ -1296,7 +1334,7 @@ class _WeeklyChart extends StatelessWidget {
                     bottom: v.targetFraction! * plotH,
                     child: CustomPaint(
                       size: const Size(double.infinity, 1),
-                      painter: _DashedLine(),
+                      painter: _DashedLine(pal.muted),
                     ),
                   ),
               ],
@@ -1311,7 +1349,7 @@ class _WeeklyChart extends StatelessWidget {
                     child: Text(
                       b.label,
                       style: TextStyle(
-                        color: b.isToday ? _ink : _muted,
+                        color: b.isToday ? pal.ink : pal.muted,
                         fontSize: _u(7.5),
                         fontWeight: b.isToday
                             ? FontWeight.w800
@@ -1335,17 +1373,19 @@ class _CategoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pal = AppPageColors.of(context);
+
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(_u(11)),
-      decoration: _cardDecoration(radius: 13),
+      decoration: _cardDecoration(pal, radius: 13),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Sisa per Kategori',
             style: TextStyle(
-              color: _ink,
+              color: pal.ink,
               fontSize: _u(10),
               fontWeight: FontWeight.w700,
             ),
@@ -1357,17 +1397,17 @@ class _CategoryCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     c.name,
-                    style: TextStyle(color: _muted, fontSize: _u(8.5)),
+                    style: TextStyle(color: pal.muted, fontSize: _u(8.5)),
                   ),
                 ),
                 Text.rich(
                   TextSpan(
-                    style: TextStyle(color: _muted, fontSize: _u(8)),
+                    style: TextStyle(color: pal.muted, fontSize: _u(8)),
                     children: [
                       TextSpan(
                         text: _gb(c.remaining),
-                        style: const TextStyle(
-                          color: _ink,
+                        style: TextStyle(
+                          color: pal.ink,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
@@ -1385,8 +1425,8 @@ class _CategoryCard extends StatelessWidget {
                     ? 0
                     : (c.usedBytes / c.quotaBytes).clamp(0.0, 1.0),
                 minHeight: _u(4),
-                backgroundColor: _line,
-                valueColor: const AlwaysStoppedAnimation(_deepTeal),
+                backgroundColor: pal.line,
+                valueColor: AlwaysStoppedAnimation(pal.primaryDeep),
               ),
             ),
             SizedBox(height: _u(8)),
@@ -1396,7 +1436,7 @@ class _CategoryCard extends StatelessWidget {
               padding: EdgeInsets.only(top: _u(2)),
               child: Text(
                 'Rincian kategori tambahan belum tersedia dari data Dashboard saat ini.',
-                style: TextStyle(color: _muted, fontSize: _u(7.5)),
+                style: TextStyle(color: pal.muted, fontSize: _u(7.5)),
               ),
             ),
         ],
@@ -1411,55 +1451,67 @@ class _PermissionNotice extends StatelessWidget {
   final VoidCallback onGrant;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: EdgeInsets.all(_u(10)),
-    decoration: BoxDecoration(
-      color: const Color(0xFFFFF5E8),
-      borderRadius: BorderRadius.circular(_u(10)),
-      border: Border.all(color: const Color(0xFFF4D7AD)),
-    ),
-    child: Row(
-      children: [
-        Icon(Icons.lock_outline, color: Colors.orange.shade800, size: _u(16)),
-        SizedBox(width: _u(7)),
-        Expanded(
-          child: Text(
-            'Izin akses penggunaan belum diberikan. Data otomatis belum dapat dibaca.',
-            style: TextStyle(color: _ink, fontSize: _u(8)),
+  Widget build(BuildContext context) {
+    final pal = AppPageColors.of(context);
+
+    return Container(
+      padding: EdgeInsets.all(_u(10)),
+      decoration: BoxDecoration(
+        color: pal.noticeBg,
+        borderRadius: BorderRadius.circular(_u(10)),
+        border: Border.all(color: pal.noticeBorder),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.lock_outline, color: pal.warning, size: _u(16)),
+          SizedBox(width: _u(7)),
+          Expanded(
+            child: Text(
+              'Izin akses penggunaan belum diberikan. Data otomatis belum dapat dibaca.',
+              style: TextStyle(color: pal.ink, fontSize: _u(8)),
+            ),
           ),
-        ),
-        TextButton(
-          onPressed: onGrant,
-          child: Text('Beri izin', style: TextStyle(fontSize: _u(8))),
-        ),
-      ],
-    ),
-  );
+          TextButton(
+            onPressed: onGrant,
+            child: Text('Beri izin', style: TextStyle(fontSize: _u(8))),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _PlannerNotice extends StatelessWidget {
   const _PlannerNotice();
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: EdgeInsets.all(_u(9)),
-    decoration: BoxDecoration(
-      color: _mint,
-      borderRadius: BorderRadius.circular(_u(9)),
-    ),
-    child: Text(
-      'Target harian dan mingguan belum tersedia. Ringkasan pemakaian dan grafik tetap ditampilkan.',
-      style: TextStyle(color: _muted, fontSize: _u(8)),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final pal = AppPageColors.of(context);
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(_u(9)),
+      decoration: BoxDecoration(
+        color: pal.mint,
+        borderRadius: BorderRadius.circular(_u(9)),
+      ),
+      child: Text(
+        'Target harian dan mingguan belum tersedia. Ringkasan pemakaian dan grafik tetap ditampilkan.',
+        style: TextStyle(color: pal.muted, fontSize: _u(8)),
+      ),
+    );
+  }
 }
 
 class _DashedLine extends CustomPainter {
+  const _DashedLine(this.color);
+
+  final Color color;
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFF9DB5B1)
+      ..color = color
       ..strokeWidth = 1;
     var x = 0.0;
     while (x < size.width) {
@@ -1478,26 +1530,30 @@ class _PrimaryButton extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: double.infinity,
-    height: _u(38),
-    child: FilledButton.icon(
-      onPressed: onTap,
-      icon: Icon(Icons.add_circle_outline, size: _u(14)),
-      label: Text(
-        label,
-        style: TextStyle(fontWeight: FontWeight.w700, fontSize: _u(10.5)),
-      ),
-      style: FilledButton.styleFrom(
-        backgroundColor: _deepTeal,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(_u(10)),
+  Widget build(BuildContext context) {
+    final pal = AppPageColors.of(context);
+
+    return SizedBox(
+      width: double.infinity,
+      height: _u(38),
+      child: FilledButton.icon(
+        onPressed: onTap,
+        icon: Icon(Icons.add_circle_outline, size: _u(14)),
+        label: Text(
+          label,
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: _u(10.5)),
         ),
-        elevation: 2,
+        style: FilledButton.styleFrom(
+          backgroundColor: pal.primaryDeep,
+          foregroundColor: pal.onPrimary,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(_u(10)),
+          ),
+          elevation: 2,
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _SecondaryButton extends StatelessWidget {
@@ -1511,29 +1567,33 @@ class _SecondaryButton extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: _u(32),
-    child: OutlinedButton.icon(
-      onPressed: onTap,
-      icon: Icon(icon, size: _u(11)),
-      label: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Text(
-          label,
-          style: TextStyle(fontSize: _u(8), fontWeight: FontWeight.w700),
+  Widget build(BuildContext context) {
+    final pal = AppPageColors.of(context);
+
+    return SizedBox(
+      height: _u(32),
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: _u(11)),
+        label: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            style: TextStyle(fontSize: _u(8), fontWeight: FontWeight.w700),
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: pal.primary,
+          backgroundColor: pal.mint,
+          side: BorderSide.none,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(_u(8)),
+          ),
+          padding: EdgeInsets.symmetric(horizontal: _u(6)),
         ),
       ),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: _teal,
-        backgroundColor: const Color(0xFFD9F6F0),
-        side: BorderSide.none,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(_u(8)),
-        ),
-        padding: EdgeInsets.symmetric(horizontal: _u(6)),
-      ),
-    ),
-  );
+    );
+  }
 }
 
 class _ErrorState extends StatelessWidget {
@@ -1542,25 +1602,32 @@ class _ErrorState extends StatelessWidget {
   final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.error_outline, size: 48, color: _muted),
-          const SizedBox(height: 12),
-          Text(message ?? 'Gagal memuat Beranda.', textAlign: TextAlign.center),
-          const SizedBox(height: 12),
-          FilledButton(
-            onPressed: onRetry,
-            style: FilledButton.styleFrom(backgroundColor: _deepTeal),
-            child: const Text('Coba lagi'),
-          ),
-        ],
+  Widget build(BuildContext context) {
+    final pal = AppPageColors.of(context);
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: pal.muted),
+            const SizedBox(height: 12),
+            Text(
+              message ?? 'Gagal memuat Beranda.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: onRetry,
+              style: FilledButton.styleFrom(backgroundColor: pal.primaryDeep),
+              child: const Text('Coba lagi'),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _InfoRow extends StatelessWidget {
@@ -1568,25 +1635,29 @@ class _InfoRow extends StatelessWidget {
   final String label, value;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 5),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            style: const TextStyle(color: _muted, fontSize: 11),
+  Widget build(BuildContext context) {
+    final pal = AppPageColors.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(color: pal.muted, fontSize: 11),
+            ),
           ),
-        ),
-        Text(
-          value,
-          style: const TextStyle(
-            color: _ink,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
+          Text(
+            value,
+            style: TextStyle(
+              color: pal.ink,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }

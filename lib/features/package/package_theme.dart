@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme.dart';
 import '../../models/models.dart';
 
-class PkgColors {
+/// Palet Light Theme develop untuk halaman Paket.
+///
+/// Nilai di sini adalah acuan visual develop. Widget membaca warna lewat
+/// [PkgPalette] agar halaman ikut Dark Mode.
+abstract final class PkgColors {
   static const bg = Color(0xFFE9FAF7);
   static const primary = Color(0xFF0F766E);
   static const accent = Color(0xFF8CE8DC);
@@ -22,6 +27,90 @@ class PkgColors {
   static const archivedBg = Color(0xFFE2E7E6);
 }
 
+/// Warna halaman Paket sesuai ThemeData aktif.
+class PkgPalette {
+  const PkgPalette({
+    required this.bg,
+    required this.card,
+    required this.primary,
+    required this.onPrimary,
+    required this.accent,
+    required this.field,
+    required this.chip,
+    required this.text,
+    required this.muted,
+    required this.avatar,
+    required this.onAvatar,
+    required this.danger,
+    required this.dangerBg,
+    required this.expiredFg,
+    required this.expiredBg,
+    required this.archivedFg,
+    required this.archivedBg,
+  });
+
+  static PkgPalette of(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? dark : light;
+
+  static const light = PkgPalette(
+    bg: PkgColors.bg,
+    card: Colors.white,
+    primary: PkgColors.primary,
+    onPrimary: Colors.white,
+    accent: PkgColors.accent,
+    field: PkgColors.field,
+    chip: PkgColors.chip,
+    text: PkgColors.text,
+    muted: PkgColors.muted,
+    avatar: PkgColors.avatar,
+    onAvatar: Colors.white70,
+    danger: PkgColors.danger,
+    dangerBg: PkgColors.dangerBg,
+    expiredFg: PkgColors.expiredFg,
+    expiredBg: PkgColors.expiredBg,
+    archivedFg: PkgColors.archivedFg,
+    archivedBg: PkgColors.archivedBg,
+  );
+
+  static const dark = PkgPalette(
+    bg: AppPalette.latarGelap,
+    card: AppPalette.surfaceGelap,
+    primary: AppPalette.tealTerang,
+    onPrimary: AppPalette.inkGelap,
+    accent: Color(0xFF1B2F2B),
+    field: AppPalette.surfaceTinggi,
+    chip: Color(0xFF243733),
+    text: AppPalette.teksGelap,
+    muted: AppPalette.teksMutedGelap,
+    avatar: Color(0xFF33403D),
+    onAvatar: Color(0xFFD9E4E1),
+    danger: AppPalette.errorGelap,
+    dangerBg: Color(0xFF4A1F1C),
+    expiredFg: AppPalette.errorGelap,
+    expiredBg: Color(0xFF4A1F1C),
+    archivedFg: Color(0xFFB6C2BF),
+    archivedBg: Color(0xFF26332F),
+  );
+
+  final Color bg;
+  final Color card;
+  final Color primary;
+  final Color onPrimary;
+  final Color accent;
+  final Color field;
+  final Color chip;
+  final Color text;
+  final Color muted;
+  final Color avatar;
+  final Color onAvatar;
+  final Color danger;
+  final Color dangerBg;
+  final Color expiredFg;
+  final Color expiredBg;
+  final Color archivedFg;
+  final Color archivedBg;
+}
+
 /// Avatar profil di app bar.
 class PkgAvatar extends StatelessWidget {
   const PkgAvatar({super.key, this.onTap, this.size = 36});
@@ -31,20 +120,19 @@ class PkgAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pal = PkgPalette.of(context);
+
     return InkWell(
       customBorder: const CircleBorder(),
       onTap: onTap,
       child: Container(
         width: size,
         height: size,
-        decoration: const BoxDecoration(
-          color: PkgColors.avatar,
-          shape: BoxShape.circle,
-        ),
+        decoration: BoxDecoration(color: pal.avatar, shape: BoxShape.circle),
         clipBehavior: Clip.antiAlias,
         child: Align(
           alignment: Alignment.bottomCenter,
-          child: Icon(Icons.person, size: size * 0.9, color: Colors.white70),
+          child: Icon(Icons.person, size: size * 0.9, color: pal.onAvatar),
         ),
       ),
     );
@@ -63,8 +151,10 @@ class PkgAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pal = PkgPalette.of(context);
+
     return Material(
-      color: PkgColors.bg,
+      color: pal.bg,
       elevation: 0,
       child: SafeArea(
         bottom: false,
@@ -76,7 +166,7 @@ class PkgAppBar extends StatelessWidget implements PreferredSizeWidget {
               children: [
                 IconButton(
                   onPressed: () => Navigator.maybePop(context),
-                  icon: const Icon(Icons.arrow_back, color: PkgColors.text),
+                  icon: Icon(Icons.arrow_back, color: pal.text),
                 ),
                 const SizedBox(width: 2),
                 Expanded(
@@ -84,10 +174,10 @@ class PkgAppBar extends StatelessWidget implements PreferredSizeWidget {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color: PkgColors.text,
+                      color: pal.text,
                     ),
                   ),
                 ),
@@ -101,7 +191,7 @@ class PkgAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
-/// Kartu putih bersudut membulat.
+/// Kartu bersudut membulat sesuai tema.
 class PkgCard extends StatelessWidget {
   const PkgCard({
     super.key,
@@ -116,19 +206,23 @@ class PkgCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pal = PkgPalette.of(context);
+
     return Container(
       margin: margin,
       padding: padding,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: pal.card,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x100F766E),
-            blurRadius: 10,
-            offset: Offset(0, 3),
-          ),
-        ],
+        boxShadow: pal == PkgPalette.dark
+            ? null
+            : const [
+                BoxShadow(
+                  color: Color(0x100F766E),
+                  blurRadius: 10,
+                  offset: Offset(0, 3),
+                ),
+              ],
       ),
       child: child,
     );
@@ -140,24 +234,28 @@ class PkgPill extends StatelessWidget {
   const PkgPill(
     this.label, {
     super.key,
-    this.bg = PkgColors.accent,
-    this.fg = PkgColors.primary,
+    this.bg,
+    this.fg,
     this.icon,
     this.dot = false,
   });
 
   final String label;
-  final Color bg;
-  final Color fg;
+  final Color? bg;
+  final Color? fg;
   final IconData? icon;
   final bool dot;
 
   @override
   Widget build(BuildContext context) {
+    final pal = PkgPalette.of(context);
+    final background = bg ?? pal.accent;
+    final foreground = fg ?? pal.primary;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: bg,
+        color: background,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -167,12 +265,15 @@ class PkgPill extends StatelessWidget {
             Container(
               width: 7,
               height: 7,
-              decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: foreground,
+                shape: BoxShape.circle,
+              ),
             ),
             const SizedBox(width: 6),
           ],
           if (icon != null) ...[
-            Icon(icon, size: 14, color: fg),
+            Icon(icon, size: 14, color: foreground),
             const SizedBox(width: 5),
           ],
           Flexible(
@@ -181,7 +282,7 @@ class PkgPill extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: fg,
+                color: foreground,
                 fontWeight: FontWeight.w700,
                 fontSize: 11,
               ),
@@ -208,21 +309,23 @@ class PkgStatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pal = PkgPalette.of(context);
+
     final Color bg;
     final Color fg;
 
     if (package.isArchived) {
-      bg = PkgColors.archivedBg;
-      fg = PkgColors.archivedFg;
+      bg = pal.archivedBg;
+      fg = pal.archivedFg;
     } else if (package.isExpiredAt()) {
-      bg = PkgColors.expiredBg;
-      fg = PkgColors.expiredFg;
+      bg = pal.expiredBg;
+      fg = pal.expiredFg;
     } else if (package.status == PackageStatus.active) {
-      bg = PkgColors.accent;
-      fg = PkgColors.primary;
+      bg = pal.accent;
+      fg = pal.primary;
     } else {
-      bg = PkgColors.chip;
-      fg = PkgColors.primary;
+      bg = pal.chip;
+      fg = pal.primary;
     }
 
     return PkgPill(labelOf(package), bg: bg, fg: fg);
@@ -239,14 +342,16 @@ class PkgIconBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pal = PkgPalette.of(context);
+
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: bg ?? PkgColors.accent,
+        color: bg ?? pal.accent,
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Icon(icon, color: PkgColors.primary, size: size * 0.5),
+      child: Icon(icon, color: pal.primary, size: size * 0.5),
     );
   }
 }

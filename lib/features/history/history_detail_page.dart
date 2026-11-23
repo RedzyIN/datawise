@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/theme.dart';
+
 import '../../models/models.dart';
 import '../../repositories/quota_category_repository.dart';
 import '../../repositories/usage_repository.dart';
@@ -15,11 +17,7 @@ class HistoryDetailPage extends StatefulWidget {
 }
 
 class _HistoryDetailPageState extends State<HistoryDetailPage> {
-  static const Color _backgroundColor = Color(0xFFE4FBF7);
-  static const Color _primaryColor = Color(0xFF00796F);
-  static const Color _titleColor = Color(0xFF073B3A);
-  static const Color _mutedColor = Color(0xFF66817E);
-  static const Color _borderColor = Color(0xFFD7F0EC);
+  AppPageColors get pal => AppPageColors.of(context);
 
   late Future<_HistoryDetailData> _dataFuture;
 
@@ -162,13 +160,13 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
   Color _statusColor(PackageStatus status) {
     switch (status) {
       case PackageStatus.active:
-        return const Color(0xFF27865C);
+        return pal.success;
       case PackageStatus.inactive:
-        return const Color(0xFF718096);
+        return pal.muted;
       case PackageStatus.expired:
-        return const Color(0xFFCC5555);
+        return pal.danger;
       case PackageStatus.archived:
-        return const Color(0xFF718096);
+        return pal.muted;
     }
   }
 
@@ -180,18 +178,20 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final pal = AppPageColors.of(context);
+
     return Scaffold(
-      backgroundColor: _backgroundColor,
+      backgroundColor: pal.background,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: _titleColor,
+        backgroundColor: pal.surface,
+        foregroundColor: pal.ink,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Detail Riwayat',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: _titleColor,
+            color: pal.ink,
           ),
         ),
       ),
@@ -199,9 +199,7 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
         future: _dataFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: _primaryColor),
-            );
+            return Center(child: CircularProgressIndicator(color: pal.primary));
           }
 
           if (snapshot.hasError) {
@@ -249,10 +247,10 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
               Expanded(
                 child: Text(
                   package.packageName,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 19,
                     fontWeight: FontWeight.bold,
-                    color: _titleColor,
+                    color: pal.ink,
                   ),
                 ),
               ),
@@ -263,7 +261,7 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
           const SizedBox(height: 8),
           Text(
             package.operatorName ?? 'Operator tidak diketahui',
-            style: const TextStyle(fontSize: 14, color: _mutedColor),
+            style: TextStyle(fontSize: 14, color: pal.muted),
           ),
           const SizedBox(height: 20),
           _buildInfoRow(
@@ -299,27 +297,27 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Ringkasan Pemakaian',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: _titleColor,
+              color: pal.ink,
             ),
           ),
           const SizedBox(height: 20),
           Text(
             _formatBytes(data.totalUsedBytes),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.bold,
-              color: _primaryColor,
+              color: pal.primary,
             ),
           ),
           const SizedBox(height: 5),
           Text(
             'dari ${_formatBytes(totalQuota)} kuota paket',
-            style: const TextStyle(fontSize: 13, color: _mutedColor),
+            style: TextStyle(fontSize: 13, color: pal.muted),
           ),
           const SizedBox(height: 18),
           ClipRRect(
@@ -327,14 +325,14 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 8,
-              backgroundColor: const Color(0xFFD7F0EC),
-              valueColor: const AlwaysStoppedAnimation<Color>(_primaryColor),
+              backgroundColor: pal.line,
+              valueColor: AlwaysStoppedAnimation<Color>(pal.primary),
             ),
           ),
           const SizedBox(height: 10),
           Text(
             '${percentage.toStringAsFixed(1)}% dari total kuota',
-            style: const TextStyle(fontSize: 12, color: _mutedColor),
+            style: TextStyle(fontSize: 12, color: pal.muted),
           ),
         ],
       ),
@@ -349,12 +347,12 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Pemakaian per Kategori',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: _titleColor,
+              color: pal.ink,
             ),
           ),
           const SizedBox(height: 18),
@@ -396,19 +394,19 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
               Expanded(
                 child: Text(
                   name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: _titleColor,
+                    color: pal.ink,
                   ),
                 ),
               ),
               Text(
                 _formatBytes(usedBytes),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: _primaryColor,
+                  color: pal.primary,
                 ),
               ),
             ],
@@ -419,8 +417,8 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
             child: LinearProgressIndicator(
               value: percentage.clamp(0.0, 1.0).toDouble(),
               minHeight: 7,
-              backgroundColor: const Color(0xFFE8EEF5),
-              valueColor: const AlwaysStoppedAnimation<Color>(_primaryColor),
+              backgroundColor: pal.surfaceAlt,
+              valueColor: AlwaysStoppedAnimation<Color>(pal.primary),
             ),
           ),
         ],
@@ -433,12 +431,12 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Catatan Pemakaian',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: _titleColor,
+              color: pal.ink,
             ),
           ),
           const SizedBox(height: 16),
@@ -464,13 +462,13 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: _primaryColor.withValues(alpha: 0.08),
+                        color: pal.primary.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.data_usage_rounded,
                         size: 19,
-                        color: _primaryColor,
+                        color: pal.primary,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -480,19 +478,16 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
                         children: [
                           Text(
                             description,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
-                              color: _titleColor,
+                              color: pal.ink,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             _formatDateTime(record.recordedAt),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: _mutedColor,
-                            ),
+                            style: TextStyle(fontSize: 11, color: pal.muted),
                           ),
                         ],
                       ),
@@ -500,10 +495,10 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
                     const SizedBox(width: 8),
                     Text(
                       _formatBytes(usedBytes),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: _primaryColor,
+                        color: pal.primary,
                       ),
                     ),
                   ],
@@ -518,20 +513,17 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
   Widget _buildInfoRow(IconData icon, String label, String value) {
     return Row(
       children: [
-        Icon(icon, size: 17, color: _mutedColor),
+        Icon(icon, size: 17, color: pal.muted),
         const SizedBox(width: 10),
         Expanded(
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 13, color: _mutedColor),
-          ),
+          child: Text(label, style: TextStyle(fontSize: 13, color: pal.muted)),
         ),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: _titleColor,
+            color: pal.ink,
           ),
         ),
       ],
@@ -560,9 +552,9 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: pal.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _borderColor),
+        border: Border.all(color: pal.line),
       ),
       child: child,
     );
@@ -575,7 +567,7 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
         child: Text(
           message,
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 13, color: _mutedColor),
+          style: TextStyle(fontSize: 13, color: pal.muted),
         ),
       ),
     );
@@ -588,26 +580,22 @@ class _HistoryDetailPageState extends State<HistoryDetailPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.error_outline_rounded,
-              size: 42,
-              color: _mutedColor,
-            ),
+            Icon(Icons.error_outline_rounded, size: 42, color: pal.muted),
             const SizedBox(height: 14),
-            const Text(
+            Text(
               'Gagal memuat detail riwayat.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
-                color: _titleColor,
+                color: pal.ink,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Periksa koneksi database, lalu coba kembali.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: _mutedColor),
+              style: TextStyle(fontSize: 13, color: pal.muted),
             ),
             const SizedBox(height: 14),
             TextButton(onPressed: _retry, child: const Text('Coba lagi')),
