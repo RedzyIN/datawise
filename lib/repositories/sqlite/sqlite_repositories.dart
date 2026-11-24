@@ -1508,6 +1508,30 @@ class SqliteAlertRepository implements AlertRepository {
   }
 
   @override
+  Future<String?> createIfAbsent(AlertLog alert) async {
+    if (alert.packageId.trim().isEmpty ||
+        alert.alertType.trim().isEmpty ||
+        alert.message.trim().isEmpty ||
+        alert.dedupeKey.trim().isEmpty) {
+      throw const AppException(
+        AppException.validation,
+        'Data notifikasi tidak valid.',
+      );
+    }
+
+    final id = alert.id ?? _newSqlId('alert');
+
+    // UNIQUE(dedupe_key) menjadi penjaga terakhir: dua evaluasi yang berjalan
+    // hampir bersamaan tidak dapat menyimpan alert yang sama dua kali.
+    final rowId = await (await h.database).insert('alert_logs', {
+      ...alert.toMap(),
+      'id': id,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+
+    return rowId == 0 ? null : id;
+  }
+
+  @override
   Future<bool> existsByDedupeKey(String dedupeKey) async {
     final rows = await (await h.database).query(
       'alert_logs',
@@ -1556,6 +1580,15 @@ class SqliteAlertRepository implements AlertRepository {
       {'is_read': 1},
       where: 'package_id = ? AND is_read = 0',
       whereArgs: [packageId],
+    );
+  }
+
+  @override
+  Future<void> delete(String alertId) async {
+    await (await h.database).delete(
+      'alert_logs',
+      where: 'id = ?',
+      whereArgs: [alertId],
     );
   }
 }

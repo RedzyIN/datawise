@@ -1227,6 +1227,32 @@ class InMemoryAlertRepository implements AlertRepository {
   }
 
   @override
+  Future<String?> createIfAbsent(AlertLog alert) async {
+    final existing = logs.values
+        .where((item) => item.dedupeKey == alert.dedupeKey)
+        .firstOrNull;
+
+    if (existing != null) return null;
+
+    final id = alert.id ?? _memoryId('alert', _nextId++);
+
+    logs[id] = AlertLog(
+      id: id,
+      packageId: alert.packageId,
+      quotaCategoryId: alert.quotaCategoryId,
+      alertType: alert.alertType,
+      message: alert.message,
+      observedBytes: alert.observedBytes,
+      thresholdBytes: alert.thresholdBytes,
+      dedupeKey: alert.dedupeKey,
+      triggeredAt: alert.triggeredAt,
+      isRead: alert.isRead,
+    );
+
+    return id;
+  }
+
+  @override
   Future<bool> existsByDedupeKey(String dedupeKey) async {
     return logs.values.any((alert) => alert.dedupeKey == dedupeKey);
   }
@@ -1287,6 +1313,11 @@ class InMemoryAlertRepository implements AlertRepository {
         );
       }
     }
+  }
+
+  @override
+  Future<void> delete(String alertId) async {
+    logs.remove(alertId);
   }
 }
 

@@ -7,6 +7,7 @@
 import '../core/format_utils.dart';
 import '../models/models.dart';
 import '../repositories/repositories.dart';
+import 'alert_dedupe.dart';
 import 'local_notification_service.dart';
 
 enum DataLimitStatus { normal, warning, reached, exceeded, noLimit, disabled }
@@ -192,14 +193,18 @@ class DataLimitService {
     if (!await notificationsEnabledFor(userId)) return evaluation;
 
     final triggeredAt = now ?? DateTime.now();
-    final dedupeKey =
-        'daily_limit_${packageId}_${dateToDb(triggeredAt)}_${alertType.name}';
 
-    if (await _alertRepo.existsByDedupeKey(dedupeKey)) return evaluation;
+    // Kunci deduplikasi sama dengan Smart Alerts sehingga ambang yang sama
+    // tidak pernah dikirim dua kali oleh dua jalur evaluasi.
+    final dedupeKey = alertDedupeKey(
+      packageId: packageId,
+      type: alertType,
+      date: triggeredAt,
+    );
 
     final message = _warningMessage(evaluation);
 
-    await _alertRepo.add(
+    final alertId = await _alertRepo.createIfAbsent(
       AlertLog(
         packageId: packageId,
         alertType: alertTypeToDb(alertType),
@@ -212,12 +217,23 @@ class DataLimitService {
       ),
     );
 
-    await _notifications.showWarning(
-      id: dedupeKey.hashCode & 0x7fffffff,
+    if (alertId == null) return evaluation;
+
+    final shown = await _notifications.showWarning(
+      id: alertNotificationId(
+        packageId: packageId,
+        type: alertType,
+        date: triggeredAt,
+      ),
       title: 'Peringatan Batas Data',
       body: message,
       payload: dedupeKey,
     );
+
+    if (!shown) {
+      // Pemulihan: hapus riwayat agar evaluasi berikutnya mencoba lagi.
+      await _alertRepo.delete(alertId);
+    }
 
     return evaluation;
   }

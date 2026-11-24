@@ -10,16 +10,35 @@ class FakeNotificationService implements LocalNotificationService {
   final List<String> bodies = [];
   final List<String> payloads = [];
 
+  bool deliver = true;
+
   @override
-  Future<void> showWarning({
+  Future<bool> init() async => true;
+
+  @override
+  Future<bool> requestPermission() async => true;
+
+  @override
+  Future<bool> showWarning({
     required int id,
     required String title,
     required String body,
     String? payload,
   }) async {
+    if (!deliver) return false;
+
     bodies.add(body);
     payloads.add(payload ?? '');
+    return true;
   }
+
+  @override
+  Future<bool> showAlert({
+    required int id,
+    required String title,
+    required String body,
+    String? payload,
+  }) async => true;
 }
 
 PlannerResult plannerWithTarget(double? dailyTargetBytes) {

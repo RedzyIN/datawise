@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants.dart';
 import '../../core/theme_provider.dart';
+import '../alerts/alert_history_page.dart';
+import '../alerts/alert_simulation_page.dart';
 import '../auth/auth_provider.dart';
 import 'widgets/usage_permission_tile.dart';
 
@@ -135,6 +138,37 @@ class SettingsPage extends StatelessWidget {
             const UsagePermissionTile(),
 
             // SLOT-D: notifikasi milik Anggota D
+            ListTile(
+              leading: const Icon(Icons.notifications_outlined),
+              title: const Text('Riwayat Notifikasi'),
+              subtitle: const Text(
+                'Peringatan target, sisa kuota, dan masa aktif paket',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AlertHistoryPage()),
+                );
+              },
+            ),
+
+            // Tombol simulasi hanya ada pada build debug.
+            if (kDebugMode)
+              ListTile(
+                leading: const Icon(Icons.science_outlined),
+                title: const Text('Simulasi Smart Alert'),
+                subtitle: const Text('Debug: picu event alert terkontrol'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AlertSimulationPage(),
+                    ),
+                  );
+                },
+              ),
 
             // SLOT-C: pengaturan internet Android
             const Divider(height: 32),

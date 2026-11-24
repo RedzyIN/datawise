@@ -6,7 +6,7 @@ enum UsageReadStatus { ok, permissionDenied, unsupported, error }
 
 enum PlannerStatus { normal, notStarted, depleted, expired }
 
-enum AlertType { daily80, daily100, dailyOver, quota10, expiring1d }
+enum AlertType { daily80, daily100, dailyOver, quota20, expiring1d }
 
 enum PackageStatus { active, inactive, expired, archived }
 
@@ -109,5 +109,19 @@ AlertType alertTypeFromDb(String value) {
   for (final type in AlertType.values) {
     if (type.name == normalized) return type;
   }
+
+  // Kompatibilitas data lama: QUOTA10 adalah nama lama untuk ambang sisa
+  // kuota utama 20%. Aturannya tidak berubah, hanya namanya yang diperbaiki.
+  if (normalized == 'quota10') return AlertType.quota20;
+
   throw FormatException('Tipe alert tidak dikenal: $value');
+}
+
+/// Versi aman dari [alertTypeFromDb] untuk data lama/tak dikenal.
+AlertType? alertTypeOrNull(String value) {
+  try {
+    return alertTypeFromDb(value);
+  } on FormatException {
+    return null;
+  }
 }

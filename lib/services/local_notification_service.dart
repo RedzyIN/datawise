@@ -1,10 +1,30 @@
-// Notifikasi lokal DATAWISE (flutter_local_notifications).
-// Dipakai Data Limit Warning; dapat dipakai ulang oleh fitur alert lain.
+// Satu-satunya infrastruktur notifikasi lokal DATAWISE
+// (flutter_local_notifications).
+//
+// Dipakai bersama oleh Data Limit Warning (`showWarning`) dan Smart Alerts
+// (`showAlert`). Keduanya berbagi satu instance plugin, satu inisialisasi, dan
+// satu alur izin POST_NOTIFICATIONS, tetapi tetap memakai channel Android yang
+// berbeda agar pengguna dapat mengatur keduanya secara terpisah.
+//
+// Setiap metode pengiriman mengembalikan `true` hanya jika notifikasi benar
+// benar dikirim. Pemanggil memakai nilai itu untuk membatalkan penandaan
+// deduplikasi ketika pengiriman gagal.
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 abstract class LocalNotificationService {
-  Future<void> showWarning({
+  Future<bool> init();
+
+  Future<bool> requestPermission();
+
+  Future<bool> showWarning({
+    required int id,
+    required String title,
+    required String body,
+    String? payload,
+  });
+
+  Future<bool> showAlert({
     required int id,
     required String title,
     required String body,
@@ -16,18 +36,26 @@ class FlutterLocalNotificationService implements LocalNotificationService {
   FlutterLocalNotificationService({FlutterLocalNotificationsPlugin? plugin})
     : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
-  static const String _channelId = 'data_limit_warning';
-  static const String _channelName = 'Peringatan Batas Data';
-  static const String _channelDescription =
+  static const String warningChannelId = 'data_limit_warning';
+  static const String warningChannelName = 'Peringatan Batas Data';
+  static const String warningChannelDescription =
       'Peringatan pemakaian data harian DATAWISE.';
 
+  static const String alertChannelId = 'datawise_alerts';
+  static const String alertChannelName = 'Peringatan kuota';
+  static const String alertChannelDescription =
+      'Peringatan target, sisa kuota, dan masa aktif paket.';
+
   final FlutterLocalNotificationsPlugin _plugin;
-  Future<void>? _initialization;
+  Future<bool>? _initialization;
 
-  Future<void> _ensureInitialized() => _initialization ??= _init();
+  @override
+  Future<bool> init() => _initialization ??= _init();
 
-  Future<void> _init() async {
-    if (kIsWeb) return;
+  Future<bool> _init() async {
+    // Plugin tidak tersedia di web/desktop; alert tetap disimpan sebagai
+    // riwayat tanpa menghentikan alur aplikasi.
+    if (kIsWeb) return false;
 
     try {
       await _plugin.initialize(
@@ -36,27 +64,107 @@ class FlutterLocalNotificationService implements LocalNotificationService {
         ),
       );
 
-      // Android 13+ meminta izin POST_NOTIFICATIONS saat runtime.
-      await _plugin
+      final android = _plugin
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
-          >()
-          ?.requestNotificationsPermission();
+          >();
+
+      await android?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          warningChannelId,
+          warningChannelName,
+          description: warningChannelDescription,
+          importance: Importance.high,
+        ),
+      );
+
+      await android?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          alertChannelId,
+          alertChannelName,
+          description: alertChannelDescription,
+          importance: Importance.high,
+        ),
+      );
+
+      // Android 13+ meminta izin POST_NOTIFICATIONS saat runtime. Penolakan
+      // tidak boleh menghentikan aplikasi.
+      try {
+        await android?.requestNotificationsPermission();
+      } catch (_) {
+        // Izin ditolak atau tidak tersedia; aplikasi tetap berjalan.
+      }
+
+      return true;
     } catch (_) {
-      // Notifikasi lokal tidak tersedia pada platform ini (mis. pengujian
-      // desktop atau plugin belum siap). Peringatan tetap tersimpan sebagai
-      // AlertLog tanpa menghentikan alur aplikasi.
+      return false;
     }
   }
 
   @override
-  Future<void> showWarning({
+  Future<bool> requestPermission() async {
+    await init();
+
+    final android = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+
+    if (android == null) return false;
+
+    try {
+      return await android.requestNotificationsPermission() ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> showWarning({
+    required int id,
+    required String title,
+    required String body,
+    String? payload,
+  }) {
+    return _show(
+      channelId: warningChannelId,
+      channelName: warningChannelName,
+      channelDescription: warningChannelDescription,
+      id: id,
+      title: title,
+      body: body,
+      payload: payload,
+    );
+  }
+
+  @override
+  Future<bool> showAlert({
+    required int id,
+    required String title,
+    required String body,
+    String? payload,
+  }) {
+    return _show(
+      channelId: alertChannelId,
+      channelName: alertChannelName,
+      channelDescription: alertChannelDescription,
+      id: id,
+      title: title,
+      body: body,
+      payload: payload,
+    );
+  }
+
+  Future<bool> _show({
+    required String channelId,
+    required String channelName,
+    required String channelDescription,
     required int id,
     required String title,
     required String body,
     String? payload,
   }) async {
-    await _ensureInitialized();
+    if (!await init()) return false;
 
     try {
       await _plugin.show(
@@ -64,18 +172,20 @@ class FlutterLocalNotificationService implements LocalNotificationService {
         title: title,
         body: body,
         payload: payload,
-        notificationDetails: const NotificationDetails(
+        notificationDetails: NotificationDetails(
           android: AndroidNotificationDetails(
-            _channelId,
-            _channelName,
-            channelDescription: _channelDescription,
+            channelId,
+            channelName,
+            channelDescription: channelDescription,
             importance: Importance.high,
             priority: Priority.high,
           ),
         ),
       );
+
+      return true;
     } catch (_) {
-      // Kegagalan menampilkan notifikasi tidak boleh menggagalkan evaluasi.
+      return false;
     }
   }
 }
