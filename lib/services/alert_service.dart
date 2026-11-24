@@ -43,8 +43,7 @@ class LocalNotificationSink implements NotificationSink {
           const AndroidNotificationChannel(
             _channelId,
             _channelName,
-            description:
-                'Peringatan target harian, sisa kuota, dan masa aktif paket',
+            description: 'Peringatan target, sisa kuota, dan masa aktif paket',
             importance: Importance.high,
           ),
         );
@@ -82,6 +81,8 @@ class AlertServiceImpl implements AlertService {
   AlertServiceImpl(
     this._alertRepo,
     this._settingsRepo, {
+    required this._categoryRepo,
+    required this._usageRepo,
     NotificationSink? sink,
     DateTime Function()? now,
   }) : _sink = sink ?? LocalNotificationSink(),
@@ -89,6 +90,8 @@ class AlertServiceImpl implements AlertService {
 
   final AlertRepository _alertRepo;
   final SettingsRepository _settingsRepo;
+  final QuotaCategoryRepository _categoryRepo;
+  final UsageRepository _usageRepo;
   final NotificationSink _sink;
   final DateTime Function() _now;
 
@@ -105,20 +108,48 @@ class AlertServiceImpl implements AlertService {
 
   Future<bool> _enabled(String userId) async {
     final setting = await _settingsRepo.getByUserId(userId);
-
-    // Jika belum ada pengaturan, notifikasi aktif secara default.
     return setting?.notificationsEnabled ?? true;
   }
 
   String _dedupeKey(String packageId, AlertType type, DateTime date) {
     final day = dateOnly(date).toIso8601String().split('T').first;
-
     return '$packageId:${type.name}:$day';
   }
 
   int _notificationId(String packageId, AlertType type, DateTime date) {
     return Object.hash(packageId, type.index, date.year, date.month, date.day) &
         0x7fffffff;
+  }
+
+  Future<({QuotaCategory category, int remainingBytes})?> _getMainQuota(
+    String packageId,
+  ) async {
+    final categories = await _categoryRepo.getByPackage(packageId);
+
+    final mainCategories = categories.where(
+      (category) =>
+          category.categoryType == QuotaCategoryType.main && category.isEnabled,
+    );
+
+    if (mainCategories.isEmpty) return null;
+
+    final main = mainCategories.first;
+    final categoryId = main.id;
+
+    if (categoryId == null || main.capacityBytes <= 0) return null;
+
+    final allocations = await _usageRepo.getAllocationsByPackage(packageId);
+
+    final usedBytes = allocations
+        .where((allocation) => allocation.quotaCategoryId == categoryId)
+        .fold<int>(0, (total, allocation) => total + allocation.allocatedBytes);
+
+    final remainingBytes = (main.capacityBytes - usedBytes).clamp(
+      0,
+      main.capacityBytes,
+    );
+
+    return (category: main, remainingBytes: remainingBytes);
   }
 
   @override
@@ -148,9 +179,29 @@ class AlertServiceImpl implements AlertService {
             String body,
             int? observedBytes,
             int? thresholdBytes,
+            String? categoryId,
           })
         >[];
 
+    // Smart Alert: kuota MAIN tersisa 20% atau kurang.
+    final mainQuota = await _getMainQuota(packageId);
+
+    if (mainQuota != null &&
+        mainQuota.remainingBytes * 100 <=
+            mainQuota.category.capacityBytes * 20) {
+      candidates.add((
+        type: AlertType.quota10,
+        date: today,
+        title: 'Sisa kuota utama menipis',
+        body:
+            'Sisa kuota utama ${package.packageName} tinggal 20% atau kurang.',
+        observedBytes: mainQuota.remainingBytes,
+        thresholdBytes: (mainQuota.category.capacityBytes * 0.2).round(),
+        categoryId: mainQuota.category.id,
+      ));
+    }
+
+    // Smart Alert: target harian tercapai atau terlampaui.
     final pct = result.todayPercentOfTarget;
 
     if (pct != null) {
@@ -163,6 +214,7 @@ class AlertServiceImpl implements AlertService {
               'Pemakaian hari ini melewati target harian ${package.packageName}.',
           observedBytes: result.todayUsedBytes,
           thresholdBytes: result.dailyTargetBytes?.round(),
+          categoryId: null,
         ));
       } else if (pct >= 100) {
         candidates.add((
@@ -173,32 +225,12 @@ class AlertServiceImpl implements AlertService {
               'Pemakaian hari ini sudah mencapai target harian ${package.packageName}.',
           observedBytes: result.todayUsedBytes,
           thresholdBytes: result.dailyTargetBytes?.round(),
-        ));
-      } else if (pct >= 80) {
-        candidates.add((
-          type: AlertType.daily80,
-          date: today,
-          title: 'Mendekati target harian',
-          body:
-              'Pemakaian hari ini sudah 80% dari target harian ${package.packageName}.',
-          observedBytes: result.todayUsedBytes,
-          thresholdBytes: result.dailyTargetBytes?.round(),
+          categoryId: null,
         ));
       }
     }
 
-    if (result.totalBytes > 0 &&
-        result.remainingBytes * 100 <= result.totalBytes * 10) {
-      candidates.add((
-        type: AlertType.quota10,
-        date: dateOnly(package.endDate),
-        title: 'Sisa kuota menipis',
-        body: 'Sisa kuota ${package.packageName} tinggal 10% atau kurang.',
-        observedBytes: result.remainingBytes,
-        thresholdBytes: (result.totalBytes * 0.1).round(),
-      ));
-    }
-
+    // Smart Alert: paket berakhir satu hari kalender sebelum end_date.
     if (today == dateOnly(package.endDate).subtract(const Duration(days: 1))) {
       candidates.add((
         type: AlertType.expiring1d,
@@ -207,6 +239,7 @@ class AlertServiceImpl implements AlertService {
         body: '${package.packageName} akan berakhir besok.',
         observedBytes: null,
         thresholdBytes: null,
+        categoryId: null,
       ));
     }
 
@@ -220,15 +253,10 @@ class AlertServiceImpl implements AlertService {
       if (await _alertRepo.existsByDedupeKey(key)) continue;
 
       try {
-        await _sink.show(
-          _notificationId(packageId, candidate.type, candidate.date),
-          candidate.title,
-          candidate.body,
-        );
-
         await _alertRepo.add(
           AlertLog(
             packageId: packageId,
+            quotaCategoryId: candidate.categoryId,
             alertType: alertTypeToDb(candidate.type),
             message: candidate.body,
             observedBytes: candidate.observedBytes,
@@ -238,8 +266,14 @@ class AlertServiceImpl implements AlertService {
             isRead: false,
           ),
         );
+
+        await _sink.show(
+          _notificationId(packageId, candidate.type, candidate.date),
+          candidate.title,
+          candidate.body,
+        );
       } catch (_) {
-        // Jika gagal, jangan membuat catatan dedupe.
+        // Kegagalan notifikasi tidak boleh menggagalkan Dashboard.
       }
     }
   }
