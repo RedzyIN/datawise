@@ -5,6 +5,7 @@ import 'package:provider/single_child_widget.dart';
 
 import 'theme_provider.dart';
 
+import '../features/alerts/alert_provider.dart';
 import '../features/auth/auth_provider.dart';
 import '../features/dashboard/dashboard_provider.dart';
 import '../features/data_limit/data_limit_provider.dart';
@@ -16,6 +17,7 @@ import '../features/usage_monitor/usage_provider.dart';
 import '../repositories/repositories.dart';
 
 import '../services/alert_service.dart';
+import '../services/alert_simulation.dart';
 import '../services/app_usage_sync_service.dart';
 import '../services/auth_service.dart';
 import '../services/data_limit_service.dart';
@@ -40,15 +42,23 @@ List<SingleChildWidget> buildAppProviders() {
   final AuthService authService = FirebaseAuthService();
   final UsageService usageService = UsageServiceImpl();
 
+  // Satu infrastruktur notifikasi lokal untuk Data Limit Warning dan Smart
+  // Alerts (satu plugin, satu inisialisasi, satu alur izin).
+  final LocalNotificationService localNotificationService =
+      FlutterLocalNotificationService();
+
   final AlertService alertService = AlertServiceImpl(
     alertRepo,
     settingsRepo,
     categoryRepo: categoryRepo,
     usageRepo: usageRepo,
+    sink: LocalNotificationSink(localNotificationService),
   );
 
-  final LocalNotificationService localNotificationService =
-      FlutterLocalNotificationService();
+  // Simulator event Smart Alerts (dipakai halaman debug).
+  final AlertSimulator alertSimulator = AlertSimulator(
+    sink: LocalNotificationSink(localNotificationService),
+  );
 
   final DataLimitService dataLimitService = DataLimitService(
     dataLimitRepo,
@@ -89,6 +99,7 @@ List<SingleChildWidget> buildAppProviders() {
     Provider<UsageService>.value(value: usageService),
     Provider<AlertService>.value(value: alertService),
     Provider<LocalNotificationService>.value(value: localNotificationService),
+    Provider<AlertSimulator>.value(value: alertSimulator),
     Provider<DataLimitService>.value(value: dataLimitService),
     Provider<UsageSyncService>.value(value: usageSyncService),
     Provider<AppUsageSyncService>.value(value: appUsageSyncService),
@@ -100,6 +111,9 @@ List<SingleChildWidget> buildAppProviders() {
     ),
     ChangeNotifierProvider<ThemeProvider>(
       create: (_) => ThemeProvider(settingsRepo),
+    ),
+    ChangeNotifierProvider<AlertProvider>(
+      create: (_) => AlertProvider(alertRepo, packageRepo),
     ),
     ChangeNotifierProvider<PackageProvider>(
       create: (_) => PackageProvider(packageRepo, usageRepo: usageRepo),
