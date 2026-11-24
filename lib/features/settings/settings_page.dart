@@ -1,15 +1,22 @@
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants.dart';
 import '../../core/theme_provider.dart';
+import '../../repositories/package_repository.dart';
+import '../../repositories/usage_repository.dart';
+import '../../services/data_export_service.dart';
 import '../auth/auth_provider.dart';
 import 'widgets/usage_permission_tile.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
-  Future<void> _confirmLogout(BuildContext context, AuthProvider auth) async {
+  Future<void> _confirmLogout(
+    BuildContext context,
+    AuthProvider auth,
+  ) async {
     final result = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -39,8 +46,31 @@ class SettingsPage extends StatelessWidget {
     if (!context.mounted) return;
 
     if (auth.errorMessage != null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(auth.errorMessage!)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(auth.errorMessage!)),
+      );
+    }
+  }
+
+  Future<void> _exportData(
+    BuildContext context,
+    String userId,
+  ) async {
+    try {
+      final exportService = DataExportService(
+        context.read<PackageRepository>(),
+        context.read<UsageRepository>(),
+      );
+
+      await exportService.exportAndShare(userId);
+    } catch (e) {
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal mengekspor data: $e'),
+        ),
+      );
     }
   }
 
@@ -55,10 +85,16 @@ class SettingsPage extends StatelessWidget {
           children: [
             // 1. Profil pengguna
             const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 8,
+              ),
               child: Text(
                 'Profil Pengguna',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
 
@@ -69,7 +105,9 @@ class SettingsPage extends StatelessWidget {
               ),
               title: Text(
                 user?.email ?? 'Tidak ada akun',
-                style: const TextStyle(fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               subtitle: user == null
                   ? const Text('Belum ada pengguna yang login')
@@ -87,11 +125,15 @@ class SettingsPage extends StatelessWidget {
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
                       )
                     : const Icon(Icons.logout),
                 label: Text(
-                  auth.isLoading ? 'Memproses...' : 'Keluar dari Akun',
+                  auth.isLoading
+                      ? 'Memproses...'
+                      : 'Keluar dari Akun',
                 ),
               ),
             ),
@@ -105,28 +147,53 @@ class SettingsPage extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(Icons.palette_outlined),
                 title: Text('Tampilan Aplikasi'),
-                subtitle: Text('Atur tampilan terang atau gelap'),
+                subtitle: Text(
+                  'Atur tampilan terang atau gelap',
+                ),
               ),
             ),
 
             Consumer<ThemeProvider>(
               builder: (context, themeProvider, child) {
-                final isDark = themeProvider.themeMode == ThemeMode.dark;
+                final isDark =
+                    themeProvider.themeMode == ThemeMode.dark;
 
                 return SwitchListTile(
-                  secondary: Icon(isDark ? Icons.dark_mode : Icons.light_mode),
+                  secondary: Icon(
+                    isDark ? Icons.dark_mode : Icons.light_mode,
+                  ),
                   title: const Text('Dark Mode'),
                   subtitle: Text(
-                    isDark ? 'Mode gelap aktif' : 'Mode terang aktif',
+                    isDark
+                        ? 'Mode gelap aktif'
+                        : 'Mode terang aktif',
                   ),
                   value: isDark,
                   onChanged: (value) {
                     themeProvider.setThemeMode(
-                      value ? ThemeMode.dark : ThemeMode.light,
+                      value
+                          ? ThemeMode.dark
+                          : ThemeMode.light,
                     );
                   },
                 );
               },
+            ),
+
+            const Divider(height: 32),
+
+            // 3. Data Export & Backup - FUT-08
+            ListTile(
+              leading: const Icon(Icons.backup_outlined),
+              title: const Text('Ekspor & Backup Data'),
+              subtitle: const Text(
+                'Simpan paket dan riwayat pemakaian ke file JSON',
+              ),
+              trailing: const Icon(Icons.share),
+              enabled: user != null,
+              onTap: user == null
+                  ? null
+                  : () => _exportData(context, user.uid),
             ),
 
             const Divider(height: 32),
@@ -139,7 +206,7 @@ class SettingsPage extends StatelessWidget {
             // SLOT-C: pengaturan internet Android
             const Divider(height: 32),
 
-            // 3. Informasi aplikasi
+            // 4. Informasi aplikasi
             const ListTile(
               leading: Icon(Icons.info_outline),
               title: Text('Versi aplikasi'),
