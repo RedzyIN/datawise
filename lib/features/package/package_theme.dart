@@ -5,8 +5,8 @@ import '../../models/models.dart';
 
 /// Palet Light Theme develop untuk halaman Paket.
 ///
-/// Nilai di sini adalah acuan visual develop. Widget membaca warna lewat
-/// [PkgPalette] agar halaman ikut Dark Mode.
+/// Konstanta ini dipertahankan agar tidak merusak komponen
+/// lain yang mungkin masih menggunakannya.
 abstract final class PkgColors {
   static const bg = Color(0xFFE9FAF7);
   static const primary = Color(0xFF0F766E);
@@ -20,18 +20,18 @@ abstract final class PkgColors {
   static const danger = Color(0xFFC62828);
   static const dangerBg = Color(0xFFFFDAD6);
 
-  // Badge peringatan (hampir mencapai batas)
+  // Badge peringatan (hampir mencapai batas).
   static const warning = Color(0xFFB26A00);
   static const warningBg = Color(0xFFFFF0D9);
 
-  // Badge status paket
+  // Badge status paket.
   static const expiredFg = Color(0xFFB3261E);
   static const expiredBg = Color(0xFFFFDAD6);
   static const archivedFg = Color(0xFF5F6B69);
   static const archivedBg = Color(0xFFE2E7E6);
 }
 
-/// Warna halaman Paket sesuai ThemeData aktif.
+/// Warna halaman Paket yang mengikuti tema global DATAWISE.
 class PkgPalette {
   const PkgPalette({
     required this.bg,
@@ -55,9 +55,40 @@ class PkgPalette {
     required this.archivedBg,
   });
 
-  static PkgPalette of(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark ? dark : light;
+  /// Mengambil warna berdasarkan palet dan mode tema aktif.
+  ///
+  /// Warna berasal dari ThemeData yang dibuat oleh
+  /// buildPaletteAppTheme() di core/theme.dart.
+  static PkgPalette of(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final page = AppPageColors.of(context);
 
+    return PkgPalette(
+      bg: page.background,
+      card: scheme.surface,
+      primary: scheme.primary,
+      onPrimary: scheme.onPrimary,
+      accent: page.surfaceAccent,
+      field: page.surfaceAlt,
+      chip: page.mint,
+      text: page.ink,
+      muted: page.muted,
+      avatar: page.avatarBg,
+      onAvatar: page.isDark ? page.ink : Colors.white,
+      danger: page.danger,
+      dangerBg: page.dangerBg,
+      warning: page.warningInk,
+      warningBg: page.noticeBg,
+      expiredFg: page.danger,
+      expiredBg: page.dangerBg,
+      archivedFg: page.muted,
+      archivedBg: page.surfaceAlt,
+    );
+  }
+
+  /// Palet lama dipertahankan untuk kompatibilitas.
+  /// Widget baru sebaiknya menggunakan PkgPalette.of(context).
   static const light = PkgPalette(
     bg: PkgColors.bg,
     card: Colors.white,
@@ -219,6 +250,7 @@ class PkgCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pal = PkgPalette.of(context);
+    final page = AppPageColors.of(context);
 
     return Container(
       margin: margin,
@@ -226,13 +258,13 @@ class PkgCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: pal.card,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: pal == PkgPalette.dark
+        boxShadow: page.isDark
             ? null
-            : const [
+            : [
                 BoxShadow(
-                  color: Color(0x100F766E),
+                  color: pal.primary.withValues(alpha: 0.08),
                   blurRadius: 10,
-                  offset: Offset(0, 3),
+                  offset: const Offset(0, 3),
                 ),
               ],
       ),
@@ -306,8 +338,7 @@ class PkgPill extends StatelessWidget {
   }
 }
 
-/// Badge status paket: utama/tambahan (mint), kedaluwarsa (merah),
-/// diarsipkan (abu-abu).
+/// Badge status paket: utama/tambahan, kedaluwarsa, diarsipkan.
 class PkgStatusPill extends StatelessWidget {
   const PkgStatusPill(this.package, {super.key});
 
@@ -316,6 +347,7 @@ class PkgStatusPill extends StatelessWidget {
   static String labelOf(DataPackage p) {
     if (p.isArchived) return 'Diarsipkan';
     if (p.isExpiredAt()) return 'Kedaluwarsa';
+
     return p.status == PackageStatus.active ? 'Paket Utama' : 'Paket Tambahan';
   }
 

@@ -1717,7 +1717,7 @@ class _PrimaryButton extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.w700, fontSize: _u(10.5)),
         ),
         style: FilledButton.styleFrom(
-          backgroundColor: pal.primaryDeep,
+          backgroundColor: pal.primary,
           foregroundColor: pal.onPrimary,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(_u(10)),

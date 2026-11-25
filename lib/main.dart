@@ -1,5 +1,5 @@
 // MILIK ARSITEK. firebase_options.dart dibuat oleh `flutterfire configure`.
-// Integrasi ThemeProvider untuk pengaturan Light Mode dan Dark Mode.
+// Integrasi ThemeProvider untuk Light/Dark Mode dan pilihan palet warna.
 
 import 'dart:async';
 
@@ -57,7 +57,7 @@ class _ThemeModeAppState extends State<_ThemeModeApp> {
   String? _lastUid;
   bool _themeSynced = false;
 
-  /// Memuat tema sesuai akun yang sedang login, hanya saat akun berubah.
+  /// Memuat tema sesuai akun yang sedang login.
   void _syncTheme(String? uid) {
     if (_themeSynced && uid == _lastUid) return;
 
@@ -82,8 +82,16 @@ class _ThemeModeAppState extends State<_ThemeModeApp> {
             return MaterialApp(
               title: 'DATAWISE',
               debugShowCheckedModeBanner: false,
-              theme: buildAppTheme(),
-              darkTheme: buildDarkAppTheme(),
+
+              // Tema Light mengikuti palet yang dipilih.
+              theme: buildPaletteAppTheme(themeProvider.palette, isDark: false),
+
+              // Tema Dark mengikuti palet yang dipilih.
+              darkTheme: buildPaletteAppTheme(
+                themeProvider.palette,
+                isDark: true,
+              ),
+
               themeMode: themeProvider.themeMode,
               initialRoute: Routes.gate,
               routes: appRoutes,

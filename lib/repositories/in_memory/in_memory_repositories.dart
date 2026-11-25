@@ -1346,6 +1346,24 @@ class InMemorySettingsRepository implements SettingsRepository {
   }
 
   @override
+  Future<void> updateNotifications(
+    String userId, {
+    required bool enabled,
+    required DateTime updatedAt,
+  }) async {
+    final existing = items[userId];
+
+    items[userId] = UserSetting(
+      userId: userId,
+      themeMode: existing?.themeMode ?? 'LIGHT',
+      paletteKey: existing?.paletteKey ?? 'BLUE',
+      notificationsEnabled: enabled,
+      timezoneId: existing?.timezoneId ?? 'UTC',
+      updatedAt: updatedAt,
+    );
+  }
+
+  @override
   Future<void> delete(String userId) async {
     items.remove(userId);
   }

@@ -11,6 +11,7 @@ import '../features/dashboard/dashboard_provider.dart';
 import '../features/data_limit/data_limit_provider.dart';
 import '../features/package/package_provider.dart';
 import '../features/package/quota_category_provider.dart';
+import '../features/settings/settings_provider.dart';
 import '../features/usage_breakdown/usage_breakdown_provider.dart';
 import '../features/usage_monitor/usage_provider.dart';
 
@@ -20,6 +21,7 @@ import '../services/alert_service.dart';
 import '../services/alert_simulation.dart';
 import '../services/app_usage_sync_service.dart';
 import '../services/auth_service.dart';
+import '../services/data_export_service.dart';
 import '../services/data_limit_service.dart';
 import '../services/local_notification_service.dart';
 import '../services/usage_breakdown_service.dart';
@@ -83,6 +85,17 @@ List<SingleChildWidget> buildAppProviders() {
     usageRepo,
   );
 
+  // Ekspor seluruh data lokal akun aktif (dipakai halaman Pengaturan).
+  final DataExportService dataExportService = DataExportService(
+    packageRepo,
+    categoryRepo,
+    ruleRepo,
+    usageRepo,
+    dataLimitRepo,
+    alertRepo,
+    settingsRepo,
+  );
+
   return [
     // Repository Provider
     Provider<PackageRepository>.value(value: packageRepo),
@@ -104,6 +117,7 @@ List<SingleChildWidget> buildAppProviders() {
     Provider<UsageSyncService>.value(value: usageSyncService),
     Provider<AppUsageSyncService>.value(value: appUsageSyncService),
     Provider<UsageBreakdownService>.value(value: usageBreakdownService),
+    Provider<DataExportService>.value(value: dataExportService),
 
     // ChangeNotifier Provider
     ChangeNotifierProvider<AuthProvider>(
@@ -114,6 +128,10 @@ List<SingleChildWidget> buildAppProviders() {
     ),
     ChangeNotifierProvider<AlertProvider>(
       create: (_) => AlertProvider(alertRepo, packageRepo),
+    ),
+    ChangeNotifierProvider<SettingsProvider>(
+      create: (_) =>
+          SettingsProvider(settingsRepo, usageService, dataExportService),
     ),
     ChangeNotifierProvider<PackageProvider>(
       create: (_) => PackageProvider(packageRepo, usageRepo: usageRepo),
