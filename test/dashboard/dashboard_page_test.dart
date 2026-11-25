@@ -1,7 +1,9 @@
+import 'package:datawise/features/alerts/alert_provider.dart';
 import 'package:datawise/features/auth/auth_provider.dart';
 import 'package:datawise/features/dashboard/dashboard_page.dart';
 import 'package:datawise/features/dashboard/dashboard_provider.dart';
 import 'package:datawise/models/models.dart';
+import 'package:datawise/repositories/in_memory/in_memory_repositories.dart';
 import 'package:datawise/repositories/repositories.dart';
 import 'package:datawise/services/alert_service.dart';
 import 'package:datawise/services/usage_service.dart';
@@ -85,11 +87,23 @@ class _Alert implements AlertService {
   ) async {}
 }
 
-Widget _app(AuthProvider auth, DashboardProvider dashboard) {
+Widget _app(
+  AuthProvider auth,
+  DashboardProvider dashboard, {
+  AlertProvider? alerts,
+}) {
   return MultiProvider(
     providers: [
       ChangeNotifierProvider<AuthProvider>.value(value: auth),
       ChangeNotifierProvider<DashboardProvider>.value(value: dashboard),
+      ChangeNotifierProvider<AlertProvider>(
+        create: (_) =>
+            alerts ??
+            AlertProvider(
+              InMemoryAlertRepository(InMemoryPackageRepository()),
+              InMemoryPackageRepository(),
+            ),
+      ),
     ],
     child: const MaterialApp(home: DashboardPage()),
   );
@@ -293,6 +307,87 @@ void main() {
     expect(find.text('Sisa per Kategori'), findsOneWidget);
     expect(find.text('Kuota Utama'), findsOneWidget);
     expect(find.text('Masukkan Pemakaian'), findsOneWidget);
+
+    dashboard.dispose();
+  });
+
+  testWidgets('ikon lonceng menampilkan jumlah alert belum dibaca', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(412, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final packageRepo = InMemoryPackageRepository();
+    final categoryRepo = InMemoryQuotaCategoryRepository(packageRepo);
+    final usageRepo = InMemoryUsageRepository(packageRepo, categoryRepo);
+    final alertRepo = InMemoryAlertRepository(packageRepo);
+
+    final now = DateTime.now();
+
+    final packageId = await packageRepo.add(
+      DataPackage(
+        userId: 'u1',
+        packageName: 'Paket Bulanan 30 GB',
+        operatorName: 'Telkomsel',
+        advertisedTotalQuotaBytes: 30000000000,
+        startDate: dateOnly(now.subtract(const Duration(days: 5))),
+        endDate: dateOnly(now.add(const Duration(days: 25))),
+        status: PackageStatus.active,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+
+    Future<void> seed(String type, String key, {bool isRead = false}) {
+      return alertRepo.createIfAbsent(
+        AlertLog(
+          packageId: packageId,
+          alertType: alertTypeToDb(AlertType.values.byName(type)),
+          message: 'Pesan $type',
+          dedupeKey: '$packageId:$key',
+          triggeredAt: now,
+          isRead: isRead,
+        ),
+      );
+    }
+
+    await seed('quota20', 'quota20:1');
+    await seed('daily100', 'daily100:1');
+    await seed('expiring1d', 'expiring1d:1', isRead: true);
+
+    final alerts = AlertProvider(alertRepo, packageRepo);
+    final dashboard = DashboardProvider(
+      packageRepo,
+      usageRepo,
+      _Usage(false),
+      _Alert(),
+      categoryRepo: categoryRepo,
+    );
+
+    await tester.pumpWidget(_app(_FakeAuth(user), dashboard, alerts: alerts));
+    await tester.pumpAndSettle();
+
+    // Indikator mengikuti jumlah alert yang belum dibaca, bukan seluruh alert.
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('header-bell-badge'))).data,
+      '2',
+    );
+
+    await tester.tap(find.byKey(const ValueKey('header-bell')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Semua Notifikasi'), findsOneWidget);
+    expect(find.text('2 belum dibaca • 3 notifikasi'), findsOneWidget);
+
+    await tester.tap(find.text('Tandai Semua Dibaca'));
+    await tester.pumpAndSettle();
+
+    expect(alerts.unreadCount, 0);
+
+    await tester.tap(find.byTooltip('Kembali'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('header-bell-badge')), findsNothing);
 
     dashboard.dispose();
   });

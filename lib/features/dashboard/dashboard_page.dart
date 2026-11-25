@@ -9,10 +9,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme.dart';
+import '../../shared/widgets/datawise_header.dart';
 
 import '../../core/constants.dart';
 import '../../core/routes.dart';
 import '../../models/models.dart';
+import '../alerts/alert_history_page.dart';
+import '../alerts/alert_provider.dart';
 import '../auth/auth_provider.dart';
 import 'dashboard_provider.dart';
 
@@ -373,6 +376,29 @@ class _DashboardPageState extends State<DashboardPage>
     final uid = context.read<AuthProvider>().currentUser?.uid;
     if (uid == null) return;
     await context.read<DashboardProvider>().refresh(uid);
+
+    // Evaluasi Smart Alerts terjadi di dalam refresh Dashboard, sehingga
+    // indikator lonceng dibaca ulang setelahnya agar jumlahnya sesuai database.
+    await _loadAlerts();
+  }
+
+  Future<void> _loadAlerts() async {
+    if (!mounted) return;
+    final uid = context.read<AuthProvider>().currentUser?.uid;
+    if (uid == null) return;
+    await context.read<AlertProvider>().load(uid);
+  }
+
+  /// Membuka Notification Center, lalu memperbarui indikator lonceng.
+  Future<void> _openNotificationCenter() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AlertHistoryPage()),
+    );
+
+    if (!mounted) return;
+
+    await _loadAlerts();
   }
 
   @override
@@ -381,11 +407,18 @@ class _DashboardPageState extends State<DashboardPage>
 
     final d = context.watch<DashboardProvider>();
     final user = context.watch<AuthProvider>().currentUser;
+    final unreadAlerts = context.watch<AlertProvider>().unreadCount;
 
     Widget body;
     if (user == null) {
       // Belum ada sesi login (pekan 1 / AuthProvider belum jadi): tampilkan data contoh.
-      body = _content(context, _DashView.mock(), d, preview: true);
+      body = _content(
+        context,
+        _DashView.mock(),
+        d,
+        preview: true,
+        unreadAlerts: unreadAlerts,
+      );
     } else {
       switch (d.loadState) {
         case DashboardLoad.loading:
@@ -393,9 +426,14 @@ class _DashboardPageState extends State<DashboardPage>
         case DashboardLoad.error:
           body = _ErrorState(message: d.errorMessage, onRetry: _load);
         case DashboardLoad.noPackage:
-          body = _emptyState(context, user, d);
+          body = _emptyState(context, user, d, unreadAlerts);
         case DashboardLoad.ready:
-          body = _content(context, _DashView.fromProvider(d, user), d);
+          body = _content(
+            context,
+            _DashView.fromProvider(d, user),
+            d,
+            unreadAlerts: unreadAlerts,
+          );
       }
     }
 
@@ -420,6 +458,7 @@ class _DashboardPageState extends State<DashboardPage>
     _DashView v,
     DashboardProvider d, {
     bool preview = false,
+    required int unreadAlerts,
   }) {
     return RefreshIndicator(
       color: pal.primary,
@@ -430,7 +469,8 @@ class _DashboardPageState extends State<DashboardPage>
         children: [
           _Header(
             v: v,
-            onBell: () => _showNotifications(context),
+            unreadAlerts: unreadAlerts,
+            onBell: _openNotificationCenter,
             onStatus: () => _showStatus(context, d, preview),
           ),
           SizedBox(height: _u(12)),
@@ -493,7 +533,12 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _emptyState(BuildContext context, AppUser user, DashboardProvider d) {
+  Widget _emptyState(
+    BuildContext context,
+    AppUser user,
+    DashboardProvider d,
+    int unreadAlerts,
+  ) {
     final v = _DashView.mock();
     final header = _DashView(
       userName: _DashView._nameFrom(user),
@@ -530,7 +575,8 @@ class _DashboardPageState extends State<DashboardPage>
         children: [
           _Header(
             v: header,
-            onBell: () => _showNotifications(context),
+            unreadAlerts: unreadAlerts,
+            onBell: _openNotificationCenter,
             onStatus: () => _showStatus(context, d, false),
           ),
           if (!d.hasPermission) ...[
@@ -632,24 +678,6 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  void _showNotifications(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Notifikasi'),
-        content: const Text(
-          'Belum ada notifikasi baru. Peringatan kuota akan muncul di sini setelah layanan notifikasi aktif.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Tutup'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showStatus(BuildContext context, DashboardProvider d, bool preview) {
     final granted = d.hasPermission;
     final r = d.lastReading;
@@ -729,11 +757,13 @@ BoxDecoration _cardDecoration(AppPageColors pal, {double radius = 14}) =>
 class _Header extends StatelessWidget {
   const _Header({
     required this.v,
+    required this.unreadAlerts,
     required this.onBell,
     required this.onStatus,
   });
 
   final _DashView v;
+  final int unreadAlerts;
   final VoidCallback onBell, onStatus;
 
   @override
@@ -743,54 +773,13 @@ class _Header extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'DATAWISE',
-                    style: TextStyle(
-                      color: pal.ink,
-                      fontWeight: FontWeight.w800,
-                      fontSize: _u(11),
-                      letterSpacing: .4,
-                    ),
-                  ),
-                  Text(
-                    'Beranda',
-                    style: TextStyle(color: pal.muted, fontSize: _u(8)),
-                  ),
-                ],
-              ),
-            ),
-            GestureDetector(
-              onTap: onBell,
-              child: Padding(
-                padding: EdgeInsets.all(_u(6)),
-                child: Icon(
-                  Icons.notifications_none_rounded,
-                  color: pal.ink,
-                  size: _u(17),
-                ),
-              ),
-            ),
-            SizedBox(width: _u(4)),
-            Container(
-              width: _u(26),
-              height: _u(26),
-              decoration: BoxDecoration(
-                color: pal.avatarBg,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.person,
-                color: pal.isDark ? AppPalette.teksGelap : Colors.white,
-                size: _u(18),
-              ),
-            ),
-          ],
+        // Header global: ukuran, padding, dan posisi ikon mengikuti standar
+        // Dashboard dan dipakai juga oleh halaman Paket serta Riwayat.
+        DatawiseHeader(
+          pageLabel: 'Beranda',
+          unreadCount: unreadAlerts,
+          onBell: onBell,
+          padding: EdgeInsets.zero,
         ),
         SizedBox(height: _u(6)),
         Row(
