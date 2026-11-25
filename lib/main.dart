@@ -1,6 +1,8 @@
 // MILIK ARSITEK. firebase_options.dart dibuat oleh `flutterfire configure`.
 // Integrasi ThemeProvider untuk pengaturan Light Mode dan Dark Mode.
 
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -12,6 +14,7 @@ import 'core/theme.dart';
 import 'core/theme_provider.dart';
 import 'features/auth/auth_provider.dart';
 import 'firebase_options.dart';
+import 'services/data_limit_background_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,6 +22,12 @@ Future<void> main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   runApp(const DatawiseApp());
+
+  // Pemeriksaan Data Limit Warning di latar belakang (Android). Dijadwalkan
+  // setelah aplikasi tampil agar pembukaan tidak menunggu platform channel
+  // WorkManager; `schedule()` juga melakukan inisialisasi dan menelan
+  // kegagalannya.
+  unawaited(DataLimitBackgroundScheduler.schedule());
 }
 
 class DatawiseApp extends StatefulWidget {

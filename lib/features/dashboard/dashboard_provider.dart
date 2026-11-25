@@ -323,10 +323,13 @@ class DashboardProvider extends ChangeNotifier {
         }
       }
 
-      // Evaluasi batas penggunaan harian.
+      // Evaluasi batas penggunaan harian. Bila pengguna belum mengatur batas
+      // manual, target harian Data Planner dipakai sebagai fallback sehingga
+      // Dashboard dan notifikasi memakai angka batas yang sama.
       final loadedDataLimit = DashboardDataLimitCalculator.evaluate(
         limitSetting,
         todayUsed,
+        plannerDailyTargetBytes: plannerResult?.dailyTargetBytes,
       );
 
       // Data Limit Warning memakai angka pemakaian yang sama dengan Dashboard.

@@ -84,7 +84,8 @@ void main() {
       );
 
       expect(result.passed, isFalse);
-      expect(result.logs, isEmpty);
+      // Riwayat AlertLog dipertahankan walau notifikasi gagal ditampilkan.
+      expect(result.logs.length, 1);
       expect(result.notifications, isEmpty);
     },
   );

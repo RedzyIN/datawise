@@ -27,6 +27,13 @@ abstract class PackageRepository {
   Future<DataPackage?> getActive(String userId);
   Future<List<DataPackage>> getAll(String userId);
 
+  /// Seluruh paket ACTIVE yang tersimpan di perangkat (semua pengguna lokal).
+  ///
+  /// Dibutuhkan evaluasi Data Limit Warning dari worker background, yang tidak
+  /// memiliki sesi Firebase aktif sehingga tidak tahu UID pengguna. Ditambahkan
+  /// tanpa mengubah perilaku metode lain dan tanpa perubahan skema database.
+  Future<List<DataPackage>> getActivePackages();
+
   /// Menjamin hanya satu paket ACTIVE per pengguna.
   Future<void> setActive(String userId, String packageId);
 

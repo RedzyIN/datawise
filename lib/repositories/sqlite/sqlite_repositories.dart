@@ -544,6 +544,18 @@ class SqlitePackageRepository implements PackageRepository {
   }
 
   @override
+  Future<List<DataPackage>> getActivePackages() async {
+    final rows = await (await h.database).query(
+      'data_packages',
+      where: 'status = ?',
+      whereArgs: ['ACTIVE'],
+      orderBy: 'updated_at DESC, id DESC',
+    );
+
+    return rows.map(DataPackage.fromMap).toList();
+  }
+
+  @override
   Future<List<DataPackage>> getAll(String userId) async {
     final rows = await (await h.database).query(
       'data_packages',

@@ -20,6 +20,10 @@ abstract final class PkgColors {
   static const danger = Color(0xFFC62828);
   static const dangerBg = Color(0xFFFFDAD6);
 
+  // Badge peringatan (hampir mencapai batas)
+  static const warning = Color(0xFFB26A00);
+  static const warningBg = Color(0xFFFFF0D9);
+
   // Badge status paket
   static const expiredFg = Color(0xFFB3261E);
   static const expiredBg = Color(0xFFFFDAD6);
@@ -43,6 +47,8 @@ class PkgPalette {
     required this.onAvatar,
     required this.danger,
     required this.dangerBg,
+    required this.warning,
+    required this.warningBg,
     required this.expiredFg,
     required this.expiredBg,
     required this.archivedFg,
@@ -66,6 +72,8 @@ class PkgPalette {
     onAvatar: Colors.white70,
     danger: PkgColors.danger,
     dangerBg: PkgColors.dangerBg,
+    warning: PkgColors.warning,
+    warningBg: PkgColors.warningBg,
     expiredFg: PkgColors.expiredFg,
     expiredBg: PkgColors.expiredBg,
     archivedFg: PkgColors.archivedFg,
@@ -86,6 +94,8 @@ class PkgPalette {
     onAvatar: Color(0xFFD9E4E1),
     danger: AppPalette.errorGelap,
     dangerBg: Color(0xFF4A1F1C),
+    warning: Color(0xFFFFB74D),
+    warningBg: Color(0xFF3A2C14),
     expiredFg: AppPalette.errorGelap,
     expiredBg: Color(0xFF4A1F1C),
     archivedFg: Color(0xFFB6C2BF),
@@ -105,6 +115,8 @@ class PkgPalette {
   final Color onAvatar;
   final Color danger;
   final Color dangerBg;
+  final Color warning;
+  final Color warningBg;
   final Color expiredFg;
   final Color expiredBg;
   final Color archivedFg;

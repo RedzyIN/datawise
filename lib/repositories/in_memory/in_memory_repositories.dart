@@ -291,6 +291,13 @@ class InMemoryPackageRepository implements PackageRepository {
   }
 
   @override
+  Future<List<DataPackage>> getActivePackages() async {
+    return _items.values
+        .where((package) => package.status == PackageStatus.active)
+        .toList();
+  }
+
+  @override
   Future<List<DataPackage>> getAll(String userId) async {
     final result = _items.values
         .where((package) => package.userId == userId)

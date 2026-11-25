@@ -57,6 +57,9 @@ final class AppPageColors {
     dangerBg: Color(0xFFFFDAD6),
     success: Color(0xFF27865C),
     warning: Color(0xFFEF6C00),
+    // Teks badge kuning: oranye yang lebih gelap agar kontras teks kecil pada
+    // latar noticeBg tetap terbaca.
+    warningInk: Color(0xFF8A4A00),
     isDark: false,
   );
 
@@ -82,6 +85,7 @@ final class AppPageColors {
     dangerBg: Color(0xFF4A1F1C),
     success: AppPalette.hijauAksen,
     warning: Color(0xFFFFB74D),
+    warningInk: Color(0xFFFFC179),
     isDark: true,
   );
 
@@ -107,6 +111,7 @@ final class AppPageColors {
     required this.dangerBg,
     required this.success,
     required this.warning,
+    required this.warningInk,
     required this.isDark,
   });
 
@@ -131,6 +136,9 @@ final class AppPageColors {
   final Color dangerBg;
   final Color success;
   final Color warning;
+
+  /// Warna teks untuk status peringatan (badge kuning) dengan kontras memadai.
+  final Color warningInk;
   final bool isDark;
 }
 

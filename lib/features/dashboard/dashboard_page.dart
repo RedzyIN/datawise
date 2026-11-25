@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme.dart';
+import '../../services/dashboard_data_limit_calculator.dart';
 import '../../shared/widgets/datawise_header.dart';
 
 import '../../core/constants.dart';
@@ -105,6 +106,7 @@ class _DashView {
     this.todayPercentLabel,
     this.weekPercentLabel,
     this.targetBytes,
+    this.todayTone = DataLimitTone.unknown,
     required this.packageForNav,
     this.categories = const [],
     this.unclassifiedBytes = 0,
@@ -120,6 +122,9 @@ class _DashView {
   final String? daysLeft; // null = tidak ditampilkan angka hari
   final String endDate;
   final String todayValue, todayTarget, todayBadge;
+
+  /// Nada status batas harian untuk warna badge "Hari Ini".
+  final DataLimitTone todayTone;
   final double todayProgress;
   final String weekValue, weekSubtitle, weekFooter;
   final double weekProgress;
@@ -164,6 +169,7 @@ class _DashView {
       todayValue: '0,90 GB',
       todayTarget: '1,53 GB',
       todayBadge: 'Aman',
+      todayTone: DataLimitTone.safe,
       todayProgress: .59,
       todayPercentLabel: '59%',
       weekValue: '10,71 GB',
@@ -244,6 +250,16 @@ class _DashView {
     }
 
     final pct = plan?.todayPercentOfTarget;
+
+    // Batas efektif: batas manual pengguna, atau target harian Data Planner bila
+    // pengguna belum mengaturnya. Formula planner itu sendiri tidak diubah.
+    final limitStatus = d.dataLimit;
+    final effectiveLimitBytes = limitStatus.isConfigured
+        ? limitStatus.limitBytes
+        : null;
+    final effectivePercent = limitStatus.isConfigured
+        ? limitStatus.percent
+        : pct;
     final weeklyTarget = plan?.weeklyTargetBytes;
     final packageStart = dateOnly(pkg.startDate);
     final cycleWeek = (today.difference(packageStart).inDays ~/ 7) + 1;
@@ -279,12 +295,15 @@ class _DashView {
       daysLeft: daysLeft,
       endDate: _longDate(pkg.endDate),
       todayValue: _gb(plan?.todayUsedBytes ?? d.dailyUsage[today] ?? 0),
-      todayTarget: dailyTarget != null ? _gb(dailyTarget) : '—',
-      todayBadge: pct == null
-          ? '—'
-          : (pct > 100 ? 'Melebihi' : (pct >= 80 ? 'Hampir' : 'Aman')),
-      todayProgress: pct != null ? (pct / 100).clamp(0.0, 1.0) : 0,
-      todayPercentLabel: pct == null ? null : '${pct.toStringAsFixed(0)}%',
+      todayTarget: effectiveLimitBytes != null ? _gb(effectiveLimitBytes) : '—',
+      todayBadge: _todayBadgeLabel(effectivePercent),
+      todayTone: toneForPercent(effectivePercent),
+      todayProgress: effectivePercent != null
+          ? (effectivePercent / 100).clamp(0.0, 1.0)
+          : 0,
+      todayPercentLabel: effectivePercent == null
+          ? null
+          : '${effectivePercent.toStringAsFixed(0)}%',
       weekValue: weeklyTarget != null ? _gb(weeklyTarget) : '—',
       weekSubtitle: 'Minggu ke-${cycleWeek < 1 ? 1 : cycleWeek} Siklus',
       weekFooter: 'Terpakai ${_gb(cycleUsed)}',
@@ -324,6 +343,16 @@ class _DashView {
       packageForNav: pkg,
       overQuota: plan != null && plan.usedBytes > plan.totalBytes,
     );
+  }
+
+  static String _todayBadgeLabel(double? percent) {
+    return switch (toneForPercent(percent)) {
+      DataLimitTone.safe => 'Aman',
+      DataLimitTone.warning => 'Hampir',
+      DataLimitTone.danger =>
+        (percent != null && percent > 100) ? 'Melebihi' : 'Mencapai',
+      DataLimitTone.unknown => '—',
+    };
   }
 
   static String _nameFrom(AppUser u) {
@@ -1113,7 +1142,11 @@ class _DailyWeekly extends StatelessWidget {
           Expanded(
             child: _MetricCard(
               title: 'Hari Ini',
-              trailing: _Badge(label: v.todayBadge, dot: true),
+              trailing: _Badge(
+                label: v.todayBadge,
+                dot: true,
+                tone: v.todayTone,
+              ),
               value: v.todayValue,
               subtitle: Text.rich(
                 TextSpan(
@@ -1186,31 +1219,47 @@ class _DailyWeekly extends StatelessWidget {
 }
 
 class _Badge extends StatelessWidget {
-  const _Badge({required this.label, this.dot = false});
+  const _Badge({
+    required this.label,
+    this.dot = false,
+    this.tone = DataLimitTone.unknown,
+  });
+
   final String label;
   final bool dot;
+
+  /// Warna mengikuti status batas harian: aman (teal), hampir mencapai
+  /// (kuning), mencapai/melebihi batas (merah).
+  final DataLimitTone tone;
 
   @override
   Widget build(BuildContext context) {
     final pal = AppPageColors.of(context);
 
+    final (Color background, Color foreground) = switch (tone) {
+      DataLimitTone.safe => (pal.mint, pal.primary),
+      DataLimitTone.warning => (pal.noticeBg, pal.warningInk),
+      DataLimitTone.danger => (pal.dangerBg, pal.danger),
+      DataLimitTone.unknown => (pal.surfaceAlt, pal.muted),
+    };
+
     return Container(
       padding: EdgeInsets.symmetric(horizontal: _u(7), vertical: _u(3)),
       decoration: BoxDecoration(
-        color: pal.mint,
+        color: background,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (dot) ...[
-            Icon(Icons.circle, size: _u(5), color: pal.primary),
+            Icon(Icons.circle, size: _u(5), color: foreground),
             SizedBox(width: _u(3)),
           ],
           Text(
             label,
             style: TextStyle(
-              color: pal.primary,
+              color: foreground,
               fontSize: _u(7.5),
               fontWeight: FontWeight.w700,
             ),
