@@ -109,7 +109,8 @@ class _DashView {
     this.todayTone = DataLimitTone.unknown,
     required this.packageForNav,
     this.categories = const [],
-    this.unclassifiedBytes = 0,
+    this.unclassifiedAppBytes = 0,
+    this.unmappedDeviceBytes = 0,
     this.overQuota = false,
     this.planUnavailable = false,
     this.categoriesComplete = false,
@@ -135,7 +136,12 @@ class _DashView {
   final String targetText, averageText, tooltip;
   final DataPackage packageForNav;
   final List<_Cat> categories;
-  final int unclassifiedBytes;
+
+  /// Byte APP_USAGE yang tidak memiliki kategori valid.
+  final int unclassifiedAppBytes;
+
+  /// Selisih DEVICE_TOTAL terhadap APP_USAGE; bukan bagian kategori.
+  final int unmappedDeviceBytes;
   final bool overQuota;
   final bool planUnavailable;
   final bool categoriesComplete;
@@ -337,7 +343,8 @@ class _DashView {
         for (final c in d.categoryUsage)
           _Cat(c.category.categoryName, c.usedBytes, c.capacityBytes),
       ],
-      unclassifiedBytes: d.unclassifiedBytes,
+      unclassifiedAppBytes: d.unclassifiedAppBytes,
+      unmappedDeviceBytes: d.unmappedDeviceBytes,
       categoriesComplete: true,
       planUnavailable: d.planUnavailable,
       packageForNav: pkg,
@@ -1597,17 +1604,17 @@ class _CategoryCard extends StatelessWidget {
             ),
             SizedBox(height: _u(8)),
           ],
-          if (v.unclassifiedBytes > 0) ...[
+          if (v.unclassifiedAppBytes > 0) ...[
             Row(
               children: [
                 Expanded(
                   child: Text(
-                    'Belum terklasifikasi',
+                    'Aplikasi belum terklasifikasi',
                     style: TextStyle(color: pal.muted, fontSize: _u(8.5)),
                   ),
                 ),
                 Text(
-                  _gb(v.unclassifiedBytes),
+                  _gb(v.unclassifiedAppBytes),
                   style: TextStyle(
                     color: pal.ink,
                     fontSize: _u(8),
@@ -1618,9 +1625,36 @@ class _CategoryCard extends StatelessWidget {
             ),
             SizedBox(height: _u(2)),
             Text(
-              'Pemakaian ini belum memiliki alokasi kategori sehingga tidak '
-              'dibebankan ke kategori mana pun, tetapi tetap dihitung pada '
-              'pemakaian paket di atas.',
+              'Pemakaian aplikasi ini belum memiliki kategori valid sehingga '
+              'tidak dibebankan ke kategori mana pun, tetapi tetap dihitung '
+              'pada pemakaian paket di atas.',
+              style: TextStyle(color: pal.muted, fontSize: _u(7.5)),
+            ),
+            SizedBox(height: _u(8)),
+          ],
+          if (v.unmappedDeviceBytes > 0) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Selisih perangkat dan aplikasi',
+                    style: TextStyle(color: pal.muted, fontSize: _u(8.5)),
+                  ),
+                ),
+                Text(
+                  _gb(v.unmappedDeviceBytes),
+                  style: TextStyle(
+                    color: pal.ink,
+                    fontSize: _u(8),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: _u(2)),
+            Text(
+              'Pemakaian perangkat yang tidak memiliki rincian aplikasi. '
+              'Selisih ini tidak dibebankan ke kategori mana pun.',
               style: TextStyle(color: pal.muted, fontSize: _u(7.5)),
             ),
             SizedBox(height: _u(8)),

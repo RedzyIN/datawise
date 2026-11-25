@@ -169,7 +169,9 @@ List<SingleChildWidget> buildAppProviders() {
         categoryRepo: categoryRepo,
         dataLimitRepo: dataLimitRepo,
         dataLimitService: dataLimitService,
-        syncService: usageSyncService,
+        // Dashboard dan Breakdown memakai jalur sinkronisasi yang sama agar
+        // APP_USAGE selalu terklasifikasi sebelum kategori dibaca.
+        syncService: appUsageSyncService,
       ),
     ),
     ChangeNotifierProvider<DataLimitProvider>(

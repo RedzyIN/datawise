@@ -6,6 +6,8 @@ import 'package:datawise/models/models.dart';
 import 'package:datawise/repositories/in_memory/in_memory_repositories.dart';
 import 'package:datawise/repositories/repositories.dart';
 import 'package:datawise/services/alert_service.dart';
+import 'package:datawise/services/app_usage_sync_service.dart';
+import 'package:datawise/services/usage/usage_classification_service.dart';
 import 'package:datawise/services/usage_service.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -87,6 +89,25 @@ class _Alert implements AlertService {
   ) async {}
 }
 
+AppUsageSyncService _appUsageSync(
+  InMemoryPackageRepository packages,
+  InMemoryQuotaCategoryRepository categories,
+  InMemoryUsageRepository usage,
+  UsageService service,
+) {
+  final rules = InMemoryClassificationRuleRepository(packages, categories);
+
+  return AppUsageSyncService(
+    service,
+    usage,
+    UsageClassificationService(
+      ruleRepository: rules,
+      categoryRepository: categories,
+      usageRepository: usage,
+    ),
+  );
+}
+
 Widget _app(
   AuthProvider auth,
   DashboardProvider dashboard, {
@@ -145,12 +166,20 @@ void main() {
     final categoryRepo = InMemoryQuotaCategoryRepository(packageRepo);
     final usageRepo = InMemoryUsageRepository(packageRepo, categoryRepo);
 
+    final usageService = _Usage(false);
+
     final dashboard = DashboardProvider(
       packageRepo,
       usageRepo,
-      _Usage(false),
+      usageService,
       _Alert(),
       categoryRepo: categoryRepo,
+      syncService: _appUsageSync(
+        packageRepo,
+        categoryRepo,
+        usageRepo,
+        usageService,
+      ),
     );
 
     await tester.pumpWidget(_app(_FakeAuth(null), dashboard));
@@ -180,12 +209,20 @@ void main() {
     final categoryRepo = InMemoryQuotaCategoryRepository(packageRepo);
     final usageRepo = InMemoryUsageRepository(packageRepo, categoryRepo);
 
+    final usageService = _Usage(false);
+
     final dashboard = DashboardProvider(
       packageRepo,
       usageRepo,
-      _Usage(false),
+      usageService,
       _Alert(),
       categoryRepo: categoryRepo,
+      syncService: _appUsageSync(
+        packageRepo,
+        categoryRepo,
+        usageRepo,
+        usageService,
+      ),
     );
 
     await tester.pumpWidget(_app(_FakeAuth(user), dashboard));
@@ -224,12 +261,20 @@ void main() {
       ),
     );
 
+    final usageService = _Usage(true);
+
     final dashboard = DashboardProvider(
       packageRepo,
       usageRepo,
-      _Usage(true),
+      usageService,
       _Alert(),
       categoryRepo: categoryRepo,
+      syncService: _appUsageSync(
+        packageRepo,
+        categoryRepo,
+        usageRepo,
+        usageService,
+      ),
       planner:
           ({
             required DataPackage package,
@@ -291,12 +336,20 @@ void main() {
 
     await _addDeviceUsage(usageRepo, id, now, 900000000);
 
+    final usageService = _Usage(false);
+
     final dashboard = DashboardProvider(
       packageRepo,
       usageRepo,
-      _Usage(false),
+      usageService,
       _Alert(),
       categoryRepo: categoryRepo,
+      syncService: _appUsageSync(
+        packageRepo,
+        categoryRepo,
+        usageRepo,
+        usageService,
+      ),
     );
 
     await tester.pumpWidget(_app(_FakeAuth(user), dashboard));
@@ -356,12 +409,20 @@ void main() {
     await seed('expiring1d', 'expiring1d:1', isRead: true);
 
     final alerts = AlertProvider(alertRepo, packageRepo);
+    final usageService = _Usage(false);
+
     final dashboard = DashboardProvider(
       packageRepo,
       usageRepo,
-      _Usage(false),
+      usageService,
       _Alert(),
       categoryRepo: categoryRepo,
+      syncService: _appUsageSync(
+        packageRepo,
+        categoryRepo,
+        usageRepo,
+        usageService,
+      ),
     );
 
     await tester.pumpWidget(_app(_FakeAuth(user), dashboard, alerts: alerts));
@@ -419,12 +480,20 @@ void main() {
 
     await _addDeviceUsage(usageRepo, id, now, 900000000);
 
+    final usageService = _Usage(false);
+
     final dashboard = DashboardProvider(
       packageRepo,
       usageRepo,
-      _Usage(false),
+      usageService,
       _Alert(),
       categoryRepo: categoryRepo,
+      syncService: _appUsageSync(
+        packageRepo,
+        categoryRepo,
+        usageRepo,
+        usageService,
+      ),
     );
 
     await tester.pumpWidget(_app(_FakeAuth(user), dashboard));

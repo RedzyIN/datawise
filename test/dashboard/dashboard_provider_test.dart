@@ -2,6 +2,8 @@ import 'package:datawise/features/dashboard/dashboard_provider.dart';
 import 'package:datawise/models/models.dart';
 import 'package:datawise/repositories/repositories.dart';
 import 'package:datawise/services/alert_service.dart';
+import 'package:datawise/services/app_usage_sync_service.dart';
+import 'package:datawise/services/usage/usage_classification_service.dart';
 import 'package:datawise/services/usage_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -72,6 +74,7 @@ class _FakeAlertService implements AlertService {
 void main() {
   late InMemoryPackageRepository packages;
   late InMemoryQuotaCategoryRepository categories;
+  late InMemoryClassificationRuleRepository rules;
   late InMemoryUsageRepository usage;
 
   DataPackage pkg(String uid, {bool active = true}) {
@@ -90,17 +93,32 @@ void main() {
     );
   }
 
+  AppUsageSyncService appUsageSync(UsageService service) {
+    return AppUsageSyncService(
+      service,
+      usage,
+      UsageClassificationService(
+        ruleRepository: rules,
+        categoryRepository: categories,
+        usageRepository: usage,
+      ),
+    );
+  }
+
   DashboardProvider build({
     required bool granted,
     int totalBytes = 0,
     DashboardPlanner? planner,
   }) {
+    final service = _FakeUsageService(granted, totalBytes: totalBytes);
+
     return DashboardProvider(
       packages,
       usage,
-      _FakeUsageService(granted, totalBytes: totalBytes),
+      service,
       _FakeAlertService(),
       categoryRepo: categories,
+      syncService: appUsageSync(service),
       planner: planner,
     );
   }
@@ -128,12 +146,15 @@ void main() {
   }
 
   DashboardProvider buildWithPlanner({required bool granted}) {
+    final service = _FakeUsageService(granted);
+
     return DashboardProvider(
       packages,
       usage,
-      _FakeUsageService(granted),
+      service,
       _FakeAlertService(),
       categoryRepo: categories,
+      syncService: appUsageSync(service),
       planner:
           ({
             required DataPackage package,
@@ -161,7 +182,8 @@ void main() {
   setUp(() {
     packages = InMemoryPackageRepository();
     categories = InMemoryQuotaCategoryRepository(packages);
-    usage = InMemoryUsageRepository(packages, categories);
+    rules = InMemoryClassificationRuleRepository(packages, categories);
+    usage = InMemoryUsageRepository(packages, categories, rules);
   });
 
   test('memuat kategori paket dan sisa kategori dari repository', () async {

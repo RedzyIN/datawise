@@ -8,9 +8,11 @@
 // Setiap skenario dijalankan pada dua backend: repository in-memory dan SQLite
 // sungguhan (sqflite_common_ffi), agar kontrak trigger/skema ikut terbukti.
 import 'package:datawise/core/db_helper.dart';
+import 'package:datawise/features/dashboard/dashboard_provider.dart';
 import 'package:datawise/features/usage_breakdown/usage_breakdown_provider.dart';
 import 'package:datawise/models/models.dart';
 import 'package:datawise/repositories/repositories.dart';
+import 'package:datawise/services/alert_service.dart';
 import 'package:datawise/services/app_usage_sync_service.dart';
 import 'package:datawise/services/usage/usage_classification_service.dart';
 import 'package:datawise/services/usage_breakdown_service.dart';
@@ -90,6 +92,21 @@ class _FakeUsageService implements UsageService {
   }
 }
 
+class _NoopAlertService implements AlertService {
+  @override
+  Future<void> init() async {}
+
+  @override
+  Future<bool> requestPermission() async => false;
+
+  @override
+  Future<void> evaluateAndNotify(
+    String userId,
+    DataPackage package,
+    PlannerResult result,
+  ) async {}
+}
+
 abstract class _Backend {
   Future<void> setUp();
   Future<void> tearDown();
@@ -131,6 +148,8 @@ abstract class _Backend {
   AppUsageSyncService syncService(_FakeUsageService monitor);
 
   UsageBreakdownProvider provider(_FakeUsageService monitor);
+
+  DashboardProvider dashboard(_FakeUsageService monitor);
 }
 
 mixin _BackendScenarioHelpers implements _Backend {
@@ -238,6 +257,16 @@ mixin _BackendScenarioHelpers implements _Backend {
         syncService(monitor),
         monitor,
       );
+
+  @override
+  DashboardProvider dashboard(_FakeUsageService monitor) => DashboardProvider(
+    packageRepository,
+    usage,
+    monitor,
+    _NoopAlertService(),
+    categoryRepo: categoryRepository,
+    syncService: syncService(monitor),
+  );
 }
 
 class _InMemoryBackend with _BackendScenarioHelpers {
@@ -901,6 +930,323 @@ void _runScenarios(_Backend Function() factory, String label) {
 
         expect(allocation.allocationMethod, AllocationMethod.autoRule);
         expect(allocation.quotaCategoryId, socialId);
+      },
+    );
+
+    // Skenario 1, 2, 3, dan 5: klasifikasi, breakdown, dan dashboard memakai
+    // record APP_USAGE yang sama, sementara total memakai DEVICE_TOTAL.
+    test(
+      'Dashboard memakai alokasi APP_USAGE tanpa menjumlahkan DEVICE_TOTAL',
+      () async {
+        final packageId = await backend.createPackage();
+        final main = await backend.mainOf(packageId);
+        final socialId = await backend.addCategory(
+          packageId,
+          name: 'Kuota Sosial',
+          type: QuotaCategoryType.social,
+        );
+
+        await backend.addRule(
+          packageId: packageId,
+          categoryId: socialId,
+          appPackageName: _instagram,
+          startMinute: 0,
+          endMinute: 1440,
+        );
+
+        final monitor = _FakeUsageService()
+          ..deviceBytes = 100 * _mb
+          ..buckets = [
+            _bucket(
+              uid: 101,
+              packageName: _instagram,
+              appName: 'Instagram',
+              bytes: 20 * _mb,
+              start: _todayAt(10, 0),
+            ),
+            _bucket(
+              uid: 102,
+              packageName: _youtube,
+              appName: 'YouTube',
+              bytes: 30 * _mb,
+              start: _todayAt(10, 0),
+            ),
+          ];
+
+        final dashboard = backend.dashboard(monitor);
+        addTearDown(dashboard.dispose);
+
+        await dashboard.refresh(_userId);
+
+        expect(dashboard.loadState, DashboardLoad.ready);
+
+        // Total dari DEVICE_TOTAL, bukan DEVICE_TOTAL + APP_USAGE.
+        expect(dashboard.totalUsedBytes, 100 * _mb);
+        expect(dashboard.dailyUsage[dateOnly(DateTime.now())], 100 * _mb);
+
+        final social = dashboard.categoryUsage.singleWhere(
+          (item) => item.category.id == socialId,
+        );
+        final mainUsage = dashboard.categoryUsage.singleWhere(
+          (item) => item.category.id == main.id,
+        );
+
+        // AUTO_RULE Instagram masuk SOCIAL, MAIN fallback YouTube masuk MAIN.
+        expect(social.usedBytes, 20 * _mb);
+        expect(mainUsage.usedBytes, 30 * _mb);
+        expect(
+          dashboard.categoryUsage.fold<int>(
+            0,
+            (sum, item) => sum + item.usedBytes,
+          ),
+          50 * _mb,
+        );
+
+        // Selisih perangkat bukan UNCLASSIFIED aplikasi.
+        expect(dashboard.unclassifiedAppBytes, 0);
+        expect(dashboard.unmappedDeviceBytes, 50 * _mb);
+        expect(dashboard.unclassifiedBytes, 50 * _mb);
+
+        // Fitri membaca record APP_USAGE yang sama dengan Dashboard.
+        final breakdown = await UsageBreakdownService(backend.usage)
+            .build(packageId: packageId);
+
+        expect(breakdown.appTotalBytes, 50 * _mb);
+        expect(
+          breakdown.apps.map((item) => item.appPackageName),
+          containsAll(<String>[_instagram, _youtube]),
+        );
+        expect(breakdown.deviceTotalBytes, 100 * _mb);
+        expect(breakdown.differenceBytes, 50 * _mb);
+      },
+    );
+
+    // Skenario 4: kategori tidak valid tidak boleh jatuh ke MAIN.
+    test('UNCLASSIFIED APP_USAGE tidak dibebankan ke MAIN', () async {
+      final packageId = await backend.createPackage();
+      final main = await backend.mainOf(packageId);
+      final expiredId = await backend.addCategory(
+        packageId,
+        name: 'Kuota Sosial Lama',
+        type: QuotaCategoryType.social,
+        validUntil: dateOnly(DateTime.now()).subtract(const Duration(days: 1)),
+      );
+
+      await backend.addRule(
+        packageId: packageId,
+        categoryId: expiredId,
+        appPackageName: _instagram,
+        startMinute: 0,
+        endMinute: 1440,
+      );
+
+      final monitor = _FakeUsageService()
+        ..buckets = [
+          _bucket(
+            uid: 101,
+            packageName: _instagram,
+            appName: 'Instagram',
+            bytes: 4 * _mb,
+            start: _todayAt(10, 0),
+          ),
+        ];
+
+      final dashboard = backend.dashboard(monitor);
+      addTearDown(dashboard.dispose);
+
+      await dashboard.refresh(_userId);
+
+      expect(dashboard.totalUsedBytes, 4 * _mb);
+      expect(dashboard.unclassifiedAppBytes, 4 * _mb);
+      expect(dashboard.unmappedDeviceBytes, 0);
+
+      final mainUsage = dashboard.categoryUsage.singleWhere(
+        (item) => item.category.id == main.id,
+      );
+
+      expect(mainUsage.usedBytes, 0);
+      expect(
+        dashboard.categoryUsage.fold<int>(
+          0,
+          (sum, item) => sum + item.usedBytes,
+        ),
+        0,
+      );
+    });
+
+    // Skenario 6: sinkronisasi berulang dari Dashboard dan Breakdown.
+    test(
+      'sinkronisasi Dashboard dan Breakdown tidak menggandakan data',
+      () async {
+        final packageId = await backend.createPackage();
+        final socialId = await backend.addCategory(
+          packageId,
+          name: 'Kuota Sosial',
+          type: QuotaCategoryType.social,
+        );
+
+        await backend.addRule(
+          packageId: packageId,
+          categoryId: socialId,
+          appPackageName: _instagram,
+          startMinute: 0,
+          endMinute: 1440,
+        );
+
+        final monitor = _FakeUsageService()
+          ..deviceBytes = 100 * _mb
+          ..buckets = [
+            _bucket(
+              uid: 101,
+              packageName: _instagram,
+              appName: 'Instagram',
+              bytes: 20 * _mb,
+              start: _todayAt(10, 0),
+            ),
+          ];
+
+        final dashboard = backend.dashboard(monitor);
+        addTearDown(dashboard.dispose);
+
+        await dashboard.refresh(_userId);
+
+        final breakdownProvider = backend.provider(monitor);
+        addTearDown(breakdownProvider.dispose);
+
+        await breakdownProvider.load(await backend.packageOf(packageId));
+
+        // Bucket yang sama dibaca ulang dengan angka lebih besar.
+        monitor.deviceBytes = 110 * _mb;
+        monitor.buckets = [
+          _bucket(
+            uid: 101,
+            packageName: _instagram,
+            appName: 'Instagram',
+            bytes: 25 * _mb,
+            start: _todayAt(10, 0),
+          ),
+        ];
+
+        await dashboard.refresh(_userId);
+
+        final records = await backend.usage.getRecords(packageId);
+        final appRecords = records
+            .where((record) => record.recordScope == UsageRecordScope.appUsage)
+            .toList();
+        final deviceRecords = records
+            .where(
+              (record) => record.recordScope == UsageRecordScope.deviceTotal,
+            )
+            .toList();
+
+        expect(appRecords, hasLength(1));
+        expect(deviceRecords, hasLength(1));
+        expect(appRecords.single.totalBytes, 25 * _mb);
+
+        final allocations = await backend.usage.getAllocations(
+          appRecords.single.id!,
+        );
+
+        expect(allocations, hasLength(1));
+        expect(allocations.single.allocatedBytes, 25 * _mb);
+        expect(allocations.single.quotaCategoryId, socialId);
+
+        expect(dashboard.totalUsedBytes, 110 * _mb);
+        expect(
+          dashboard.categoryUsage
+              .singleWhere((item) => item.category.id == socialId)
+              .usedBytes,
+          25 * _mb,
+        );
+        expect(dashboard.unmappedDeviceBytes, 85 * _mb);
+      },
+    );
+
+    // Skenario 7: mode manual tetap prioritas dan tidak dijumlahkan dengan
+    // alokasi APP_USAGE pada tanggal yang sama.
+    test(
+      'MANUAL_TOTAL tetap prioritas tanpa menghitung ganda kategori',
+      () async {
+        final packageId = await backend.createPackage();
+        final main = await backend.mainOf(packageId);
+        final socialId = await backend.addCategory(
+          packageId,
+          name: 'Kuota Sosial',
+          type: QuotaCategoryType.social,
+        );
+
+        await backend.addRule(
+          packageId: packageId,
+          categoryId: socialId,
+          appPackageName: _instagram,
+          startMinute: 0,
+          endMinute: 1440,
+        );
+
+        final now = DateTime.now();
+        final start = dateOnly(now);
+
+        await backend.usage.upsertRecordWithAllocations(
+          UsageRecord(
+            packageId: packageId,
+            recordScope: UsageRecordScope.manualTotal,
+            networkType: NetworkType.mobile,
+            periodStartAt: start,
+            periodEndAt: now.isAfter(start)
+                ? now
+                : start.add(const Duration(seconds: 1)),
+            rxBytes: 80 * _mb,
+            txBytes: 0,
+            source: UsageSource.manual,
+            sourceKey: 'manual_${packageId}_${start.millisecondsSinceEpoch}',
+            recordedAt: now,
+          ),
+          (usageRecordId) => [
+            UsageAllocation(
+              packageId: packageId,
+              usageRecordId: usageRecordId,
+              quotaCategoryId: main.id,
+              allocatedBytes: 80 * _mb,
+              allocationMethod: AllocationMethod.manualUser,
+              createdAt: now,
+            ),
+          ],
+        );
+
+        final monitor = _FakeUsageService()
+          ..deviceBytes = 100 * _mb
+          ..buckets = [
+            _bucket(
+              uid: 101,
+              packageName: _instagram,
+              appName: 'Instagram',
+              bytes: 20 * _mb,
+              start: _todayAt(10, 0),
+            ),
+          ];
+
+        final dashboard = backend.dashboard(monitor);
+        addTearDown(dashboard.dispose);
+
+        await dashboard.refresh(_userId);
+
+        // MANUAL_TOTAL menang atas DEVICE_TOTAL dan APP_USAGE pada hari itu.
+        expect(dashboard.totalUsedBytes, 80 * _mb);
+        expect(
+          dashboard.categoryUsage
+              .singleWhere((item) => item.category.id == main.id)
+              .usedBytes,
+          80 * _mb,
+        );
+        expect(
+          dashboard.categoryUsage
+              .singleWhere((item) => item.category.id == socialId)
+              .usedBytes,
+          0,
+        );
+        expect(dashboard.unclassifiedAppBytes, 0);
+        expect(dashboard.unmappedDeviceBytes, 0);
+        expect(dashboard.unclassifiedBytes, 0);
       },
     );
   });

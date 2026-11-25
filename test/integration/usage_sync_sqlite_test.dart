@@ -6,6 +6,8 @@ import 'package:datawise/features/dashboard/dashboard_provider.dart';
 import 'package:datawise/models/models.dart';
 import 'package:datawise/repositories/sqlite/sqlite_repositories.dart';
 import 'package:datawise/services/alert_service.dart';
+import 'package:datawise/services/app_usage_sync_service.dart';
+import 'package:datawise/services/usage/usage_classification_service.dart';
 import 'package:datawise/services/usage_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -136,13 +138,29 @@ void main() {
   DashboardProvider buildDashboard({bool granted = true, DbHelper? db}) {
     final h = db ?? helper;
 
+    final packageRepository = SqlitePackageRepository(h);
+    final categoryRepository = SqliteQuotaCategoryRepository(h);
+    final ruleRepository = SqliteClassificationRuleRepository(h);
+    final usageRepository = SqliteUsageRepository(h);
+    final dataLimitRepository = SqliteDataLimitRepository(h);
+    final service = android..granted = granted;
+
     dashboard = DashboardProvider(
-      SqlitePackageRepository(h),
-      SqliteUsageRepository(h),
-      android..granted = granted,
+      packageRepository,
+      usageRepository,
+      service,
       _NoopAlert(),
-      categoryRepo: SqliteQuotaCategoryRepository(h),
-      dataLimitRepo: SqliteDataLimitRepository(h),
+      categoryRepo: categoryRepository,
+      dataLimitRepo: dataLimitRepository,
+      syncService: AppUsageSyncService(
+        service,
+        usageRepository,
+        UsageClassificationService(
+          ruleRepository: ruleRepository,
+          categoryRepository: categoryRepository,
+          usageRepository: usageRepository,
+        ),
+      ),
     );
 
     return dashboard;
