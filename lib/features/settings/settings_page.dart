@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -8,15 +7,13 @@ import '../../repositories/package_repository.dart';
 import '../../repositories/usage_repository.dart';
 import '../../services/data_export_service.dart';
 import '../auth/auth_provider.dart';
+import 'color_palette_page.dart';
 import 'widgets/usage_permission_tile.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
-  Future<void> _confirmLogout(
-    BuildContext context,
-    AuthProvider auth,
-  ) async {
+  Future<void> _confirmLogout(BuildContext context, AuthProvider auth) async {
     final result = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -46,16 +43,12 @@ class SettingsPage extends StatelessWidget {
     if (!context.mounted) return;
 
     if (auth.errorMessage != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(auth.errorMessage!)),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(auth.errorMessage!)));
     }
   }
 
-  Future<void> _exportData(
-    BuildContext context,
-    String userId,
-  ) async {
+  Future<void> _exportData(BuildContext context, String userId) async {
     try {
       final exportService = DataExportService(
         context.read<PackageRepository>(),
@@ -66,11 +59,8 @@ class SettingsPage extends StatelessWidget {
     } catch (e) {
       if (!context.mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal mengekspor data: $e'),
-        ),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Gagal mengekspor data: $e')));
     }
   }
 
@@ -85,16 +75,10 @@ class SettingsPage extends StatelessWidget {
           children: [
             // 1. Profil pengguna
             const Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 8,
-              ),
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Text(
                 'Profil Pengguna',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
 
@@ -105,9 +89,7 @@ class SettingsPage extends StatelessWidget {
               ),
               title: Text(
                 user?.email ?? 'Tidak ada akun',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                ),
+                style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               subtitle: user == null
                   ? const Text('Belum ada pengguna yang login')
@@ -125,15 +107,11 @@ class SettingsPage extends StatelessWidget {
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.logout),
                 label: Text(
-                  auth.isLoading
-                      ? 'Memproses...'
-                      : 'Keluar dari Akun',
+                  auth.isLoading ? 'Memproses...' : 'Keluar dari Akun',
                 ),
               ),
             ),
@@ -148,32 +126,48 @@ class SettingsPage extends StatelessWidget {
                 leading: Icon(Icons.palette_outlined),
                 title: Text('Tampilan Aplikasi'),
                 subtitle: Text(
-                  'Atur tampilan terang atau gelap',
+                  'Atur tampilan terang, gelap, dan warna aplikasi',
                 ),
               ),
             ),
 
+            // Pengaturan Light dan Dark Mode
             Consumer<ThemeProvider>(
               builder: (context, themeProvider, child) {
-                final isDark =
-                    themeProvider.themeMode == ThemeMode.dark;
+                final isDark = themeProvider.themeMode == ThemeMode.dark;
 
                 return SwitchListTile(
-                  secondary: Icon(
-                    isDark ? Icons.dark_mode : Icons.light_mode,
-                  ),
+                  secondary: Icon(isDark ? Icons.dark_mode : Icons.light_mode),
                   title: const Text('Dark Mode'),
                   subtitle: Text(
-                    isDark
-                        ? 'Mode gelap aktif'
-                        : 'Mode terang aktif',
+                    isDark ? 'Mode gelap aktif' : 'Mode terang aktif',
                   ),
                   value: isDark,
                   onChanged: (value) {
                     themeProvider.setThemeMode(
-                      value
-                          ? ThemeMode.dark
-                          : ThemeMode.light,
+                      value ? ThemeMode.dark : ThemeMode.light,
+                    );
+                  },
+                );
+              },
+            ),
+
+            // Menu pemilihan palet warna
+            Consumer<ThemeProvider>(
+              builder: (context, themeProvider, child) {
+                return ListTile(
+                  leading: const Icon(Icons.color_lens_outlined),
+                  title: const Text('Color Palette'),
+                  subtitle: Text(
+                    'Warna saat ini: ${themeProvider.palette.name}',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ColorPalettePage(),
+                      ),
                     );
                   },
                 );
@@ -191,9 +185,7 @@ class SettingsPage extends StatelessWidget {
               ),
               trailing: const Icon(Icons.share),
               enabled: user != null,
-              onTap: user == null
-                  ? null
-                  : () => _exportData(context, user.uid),
+              onTap: user == null ? null : () => _exportData(context, user.uid),
             ),
 
             const Divider(height: 32),

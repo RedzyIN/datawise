@@ -481,8 +481,11 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
     Color? fg,
   }) {
     final pal = PkgPalette.of(context);
-    final background = bg ?? pal.chip;
-    final foreground = fg ?? pal.primary;
+
+    // Warna default mengikuti warna utama palet aplikasi.
+    // Warna khusus tetap bisa diberikan melalui parameter bg dan fg.
+    final background = bg ?? pal.primary;
+    final foreground = fg ?? pal.onPrimary;
 
     return SizedBox(
       width: double.infinity,

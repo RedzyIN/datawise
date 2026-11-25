@@ -1,12 +1,12 @@
+import 'package:flutter/material.dart';
+
+import '../models/theme_palette.dart';
+
 // MILIK ARSITEK (tema dasar).
 // Light Theme = standar develop (identitas teal).
 // Dark Theme = adaptasi identitas yang sama, bukan palet baru.
-import 'package:flutter/material.dart';
 
-/// Satu sumber warna untuk Light dan Dark Theme.
-/// Jangan menulis kode warna tema di tempat lain.
 abstract final class AppPalette {
-  // --- Identitas develop (light) ---
   static const Color teal = Color(0xFF00796F);
   static const Color deepTeal = Color(0xFF00695C);
   static const Color mint = Color(0xFFE4FBF7);
@@ -15,7 +15,6 @@ abstract final class AppPalette {
   static const Color line = Color(0xFFD7F0EC);
   static const Color error = Color(0xFFC62828);
 
-  // --- Adaptasi dark (turunan identitas teal yang sama) ---
   static const Color tealTerang = Color(0xFF31C9B8);
   static const Color hijauAksen = Color(0xFF5AE38C);
   static const Color inkGelap = Color(0xFF00201C);
@@ -28,12 +27,13 @@ abstract final class AppPalette {
   static const Color errorGelap = Color(0xFFFF8A80);
 }
 
-/// Warna peran halaman (Dashboard, Paket, Riwayat) yang selalu mengikuti
-/// ThemeData aktif. Light memakai identitas develop apa adanya; dark memakai
-/// adaptasi identitas teal yang sama.
-final class AppPageColors {
-  static AppPageColors of(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark ? dark : light;
+final class AppPageColors extends ThemeExtension<AppPageColors> {
+  static AppPageColors of(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return theme.extension<AppPageColors>() ??
+        (theme.brightness == Brightness.dark ? dark : light);
+  }
 
   static const AppPageColors light = AppPageColors._(
     background: AppPalette.mint,
@@ -132,9 +132,51 @@ final class AppPageColors {
   final Color success;
   final Color warning;
   final bool isDark;
+
+  factory AppPageColors.fromPalette(
+    ThemePaletteColors colors, {
+    required bool isDark,
+  }) {
+    final muted = Color.lerp(colors.text, colors.background, 0.45)!;
+    final line = Color.lerp(colors.text, colors.background, 0.82)!;
+
+    return AppPageColors._(
+      background: colors.background,
+      backgroundEnd: Color.lerp(colors.background, colors.surface, 0.5)!,
+      surface: colors.surface,
+      surfaceAlt: Color.lerp(colors.surface, colors.primary, 0.10)!,
+      surfaceAccent: Color.lerp(colors.surface, colors.accent, 0.18)!,
+      primary: colors.primary,
+      primaryDeep: colors.secondary,
+      onPrimary: isDark ? colors.background : Colors.white,
+      ink: colors.text,
+      muted: muted,
+      line: line,
+      mint: colors.background,
+      barPale: Color.lerp(colors.background, colors.accent, 0.35)!,
+      barBright: colors.accent,
+      noticeBg: Color.lerp(colors.surface, colors.accent, 0.12)!,
+      noticeBorder: Color.lerp(colors.surface, colors.accent, 0.35)!,
+      avatarBg: muted,
+      danger: isDark ? const Color(0xFFFF8A80) : const Color(0xFFC62828),
+      dangerBg: isDark ? const Color(0xFF4A1F1C) : const Color(0xFFFFDAD6),
+      success: isDark ? const Color(0xFF5AE38C) : const Color(0xFF27865C),
+      warning: const Color(0xFFEF6C00),
+      isDark: isDark,
+    );
+  }
+
+  @override
+  AppPageColors copyWith() => this;
+
+  @override
+  AppPageColors lerp(covariant AppPageColors? other, double t) {
+    if (other == null) return this;
+    return t < 0.5 ? this : other;
+  }
 }
 
-// Tema Light Mode (acuan desain develop)
+// Tema Light Mode bawaan.
 ThemeData buildAppTheme() {
   const teal = AppPalette.teal;
   const deepTeal = AppPalette.deepTeal;
@@ -156,14 +198,12 @@ ThemeData buildAppTheme() {
     ),
     scaffoldBackgroundColor: mint,
     dividerTheme: const DividerThemeData(color: line, thickness: 1),
-
     appBarTheme: const AppBarTheme(
       backgroundColor: mint,
       foregroundColor: ink,
       elevation: 0,
       surfaceTintColor: Colors.transparent,
     ),
-
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
@@ -175,7 +215,6 @@ ThemeData buildAppTheme() {
         if (states.contains(WidgetState.selected)) {
           return const IconThemeData(color: deepTeal, size: 23);
         }
-
         return const IconThemeData(color: muted, size: 23);
       }),
       labelTextStyle: WidgetStateProperty.resolveWith<TextStyle>((states) {
@@ -186,7 +225,6 @@ ThemeData buildAppTheme() {
             fontSize: 12,
           );
         }
-
         return const TextStyle(
           color: muted,
           fontWeight: FontWeight.w500,
@@ -194,7 +232,6 @@ ThemeData buildAppTheme() {
         );
       }),
     ),
-
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: deepTeal,
@@ -202,11 +239,9 @@ ThemeData buildAppTheme() {
         overlayColor: mint,
       ),
     ),
-
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(foregroundColor: teal, overlayColor: mint),
     ),
-
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         foregroundColor: teal,
@@ -214,23 +249,21 @@ ThemeData buildAppTheme() {
         overlayColor: mint,
       ),
     ),
-
     progressIndicatorTheme: const ProgressIndicatorThemeData(
       color: deepTeal,
       linearTrackColor: line,
     ),
-
     inputDecorationTheme: InputDecorationTheme(
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(color: teal, width: 1.5),
       ),
     ),
+    extensions: const <ThemeExtension<dynamic>>[AppPageColors.light],
   );
 }
 
-// Tema Dark Mode: background charcoal, surface bertingkat, teal terang sebagai
-// identitas utama, hijau terang sebagai aksen (dipakai terbatas).
+// Tema Dark Mode bawaan.
 ThemeData buildDarkAppTheme() {
   const tealTerang = AppPalette.tealTerang;
   const hijauAksen = AppPalette.hijauAksen;
@@ -267,7 +300,6 @@ ThemeData buildDarkAppTheme() {
       bodyColor: teks,
       displayColor: teks,
     ),
-
     appBarTheme: const AppBarTheme(
       backgroundColor: AppPalette.latarGelap,
       foregroundColor: teks,
@@ -275,19 +307,16 @@ ThemeData buildDarkAppTheme() {
       surfaceTintColor: Colors.transparent,
       iconTheme: IconThemeData(color: tealTerang),
     ),
-
     cardTheme: const CardThemeData(
       color: surface,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       margin: EdgeInsets.zero,
     ),
-
     dialogTheme: const DialogThemeData(
       backgroundColor: surfaceTinggi,
       surfaceTintColor: Colors.transparent,
     ),
-
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: surface,
       surfaceTintColor: Colors.transparent,
@@ -300,7 +329,6 @@ ThemeData buildDarkAppTheme() {
         if (states.contains(WidgetState.selected)) {
           return const IconThemeData(color: tealTerang, size: 23);
         }
-
         return const IconThemeData(color: muted, size: 23);
       }),
       labelTextStyle: WidgetStateProperty.resolveWith<TextStyle>((states) {
@@ -311,7 +339,6 @@ ThemeData buildDarkAppTheme() {
             fontSize: 12,
           );
         }
-
         return const TextStyle(
           color: muted,
           fontWeight: FontWeight.w500,
@@ -319,7 +346,6 @@ ThemeData buildDarkAppTheme() {
         );
       }),
     ),
-
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: tealTerang,
@@ -329,14 +355,12 @@ ThemeData buildDarkAppTheme() {
         disabledForegroundColor: muted,
       ),
     ),
-
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: tealTerang,
         overlayColor: tealTerang.withValues(alpha: 0.12),
       ),
     ),
-
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         foregroundColor: tealTerang,
@@ -344,12 +368,10 @@ ThemeData buildDarkAppTheme() {
         overlayColor: tealTerang.withValues(alpha: 0.12),
       ),
     ),
-
     progressIndicatorTheme: const ProgressIndicatorThemeData(
       color: hijauAksen,
       linearTrackColor: surfaceTinggi,
     ),
-
     switchTheme: SwitchThemeData(
       thumbColor: WidgetStateProperty.resolveWith<Color>((states) {
         if (states.contains(WidgetState.selected)) return hijauAksen;
@@ -363,7 +385,6 @@ ThemeData buildDarkAppTheme() {
       }),
       trackOutlineColor: WidgetStateProperty.all(garis),
     ),
-
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: surface,
@@ -393,5 +414,235 @@ ThemeData buildDarkAppTheme() {
         borderSide: const BorderSide(color: AppPalette.errorGelap, width: 1.5),
       ),
     ),
+    extensions: const <ThemeExtension<dynamic>>[AppPageColors.dark],
+  );
+}
+
+/// Membuat ThemeData berdasarkan palet pilihan pengguna.
+ThemeData buildPaletteAppTheme(ThemePalette palette, {required bool isDark}) {
+  final colors = isDark ? palette.dark : palette.light;
+  final brightness = isDark ? Brightness.dark : Brightness.light;
+
+  final baseTheme = isDark ? buildDarkAppTheme() : buildAppTheme();
+
+  final colorScheme = ColorScheme.fromSeed(
+    seedColor: colors.primary,
+    brightness: brightness,
+    primary: colors.primary,
+    onPrimary: isDark ? colors.background : Colors.white,
+    secondary: colors.secondary,
+    onSecondary: isDark ? colors.background : Colors.white,
+    surface: colors.surface,
+    onSurface: colors.text,
+    error: isDark ? const Color(0xFFFF8A80) : const Color(0xFFC62828),
+    outline: Color.lerp(colors.text, colors.background, 0.72)!,
+  );
+
+  final pageColors = AppPageColors.fromPalette(colors, isDark: isDark);
+
+  final disabledBackground = Color.lerp(
+    colors.surface,
+    colors.background,
+    0.5,
+  )!;
+
+  final borderRadius = BorderRadius.circular(14);
+
+  final normalBorder = OutlineInputBorder(
+    borderRadius: borderRadius,
+    borderSide: BorderSide(color: pageColors.line),
+  );
+
+  final focusedBorder = OutlineInputBorder(
+    borderRadius: borderRadius,
+    borderSide: BorderSide(color: colors.primary, width: 1.5),
+  );
+
+  final errorBorder = OutlineInputBorder(
+    borderRadius: borderRadius,
+    borderSide: BorderSide(color: pageColors.danger),
+  );
+
+  return baseTheme.copyWith(
+    colorScheme: colorScheme,
+    scaffoldBackgroundColor: colors.background,
+    canvasColor: colors.background,
+    dividerColor: pageColors.line,
+    dividerTheme: DividerThemeData(color: pageColors.line, thickness: 1),
+
+    // AppBar mengikuti palet aktif.
+    appBarTheme: baseTheme.appBarTheme.copyWith(
+      backgroundColor: colors.background,
+      foregroundColor: colors.text,
+      iconTheme: IconThemeData(color: colors.primary),
+      actionsIconTheme: IconThemeData(color: colors.primary),
+    ),
+
+    // Navigasi bawah: Beranda, Paket, Riwayat, Pengaturan.
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: colors.surface,
+      surfaceTintColor: Colors.transparent,
+      indicatorColor: colors.primary.withValues(alpha: 0.16),
+      shadowColor: colors.primary.withValues(alpha: isDark ? 0.18 : 0.08),
+      height: 68,
+      elevation: isDark ? 8 : 2,
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      iconTheme: WidgetStateProperty.resolveWith<IconThemeData>((states) {
+        if (states.contains(WidgetState.selected)) {
+          return IconThemeData(color: colors.primary, size: 23);
+        }
+
+        return IconThemeData(color: pageColors.muted, size: 23);
+      }),
+      labelTextStyle: WidgetStateProperty.resolveWith<TextStyle>((states) {
+        if (states.contains(WidgetState.selected)) {
+          return TextStyle(
+            color: colors.primary,
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+          );
+        }
+
+        return TextStyle(
+          color: pageColors.muted,
+          fontWeight: FontWeight.w500,
+          fontSize: 12,
+        );
+      }),
+    ),
+
+    iconTheme: IconThemeData(color: colors.text),
+
+    textTheme: baseTheme.textTheme.apply(
+      bodyColor: colors.text,
+      displayColor: colors.text,
+    ),
+
+    // Kartu dan dialog.
+    cardTheme: baseTheme.cardTheme.copyWith(
+      color: colors.surface,
+      surfaceTintColor: Colors.transparent,
+    ),
+
+    dialogTheme: baseTheme.dialogTheme.copyWith(
+      backgroundColor: colors.surface,
+      surfaceTintColor: Colors.transparent,
+    ),
+
+    // Tombol utama.
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: colors.primary,
+        foregroundColor: isDark ? colors.background : Colors.white,
+        disabledBackgroundColor: disabledBackground,
+        disabledForegroundColor: pageColors.muted,
+        overlayColor: colors.accent.withValues(alpha: 0.18),
+      ),
+    ),
+
+    // Tombol Elevated.
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: colors.primary,
+        foregroundColor: isDark ? colors.background : Colors.white,
+        disabledBackgroundColor: disabledBackground,
+        disabledForegroundColor: pageColors.muted,
+        overlayColor: colors.accent.withValues(alpha: 0.18),
+        elevation: 0,
+      ),
+    ),
+
+    // Tombol teks.
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: colors.primary,
+        overlayColor: colors.accent.withValues(alpha: 0.18),
+      ),
+    ),
+
+    // Tombol outline.
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: colors.primary,
+        side: BorderSide(color: colors.primary),
+        overlayColor: colors.accent.withValues(alpha: 0.18),
+      ),
+    ),
+
+    // Tombol ikon.
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        foregroundColor: colors.primary,
+        disabledForegroundColor: pageColors.muted,
+      ),
+    ),
+
+    // Kolom input.
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: colors.surface,
+      hintStyle: TextStyle(color: pageColors.muted),
+      labelStyle: TextStyle(color: pageColors.muted),
+      helperStyle: TextStyle(color: pageColors.muted),
+      prefixIconColor: pageColors.muted,
+      suffixIconColor: pageColors.muted,
+      border: normalBorder,
+      enabledBorder: normalBorder,
+      focusedBorder: focusedBorder,
+      errorBorder: errorBorder,
+      focusedErrorBorder: errorBorder,
+    ),
+
+    // Switch.
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith<Color>((states) {
+        if (states.contains(WidgetState.selected)) {
+          return colors.primary;
+        }
+
+        return pageColors.muted;
+      }),
+      trackColor: WidgetStateProperty.resolveWith<Color>((states) {
+        if (states.contains(WidgetState.selected)) {
+          return colors.primary.withValues(alpha: 0.35);
+        }
+
+        return disabledBackground;
+      }),
+      trackOutlineColor: WidgetStateProperty.all(pageColors.line),
+    ),
+
+    // Checkbox.
+    checkboxTheme: CheckboxThemeData(
+      fillColor: WidgetStateProperty.resolveWith<Color?>((states) {
+        if (states.contains(WidgetState.selected)) {
+          return colors.primary;
+        }
+
+        return Colors.transparent;
+      }),
+      checkColor: WidgetStateProperty.all(
+        isDark ? colors.background : Colors.white,
+      ),
+      side: BorderSide(color: pageColors.muted),
+    ),
+
+    // Radio.
+    radioTheme: RadioThemeData(
+      fillColor: WidgetStateProperty.resolveWith<Color?>((states) {
+        if (states.contains(WidgetState.selected)) {
+          return colors.primary;
+        }
+
+        return pageColors.muted;
+      }),
+    ),
+
+    progressIndicatorTheme: ProgressIndicatorThemeData(
+      color: colors.primary,
+      linearTrackColor: pageColors.surfaceAlt,
+    ),
+
+    extensions: <ThemeExtension<dynamic>>[pageColors],
   );
 }
