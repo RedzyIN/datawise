@@ -4,8 +4,14 @@
 // sebagai APP_USAGE. DEVICE_TOTAL tetap ditulis memakai `source_key` yang sama
 // dengan `UsageSyncServiceImpl`, sehingga pemakaian agregat perangkat tidak
 // pernah tercatat dua kali. Kedua jenis catatan tidak dijumlahkan sebagai total.
+//
+// Setiap APP_USAGE diklasifikasikan oleh `UsageClassificationService` memakai
+// aturan yang tersimpan di database. Service ini tidak menduplikasi logika
+// prioritas, wildcard, hari, rentang waktu, atau MAIN fallback milik
+// `ClassificationEngine`.
 import '../models/models.dart';
 import '../repositories/repositories.dart';
+import 'usage/usage_classification_service.dart';
 import 'usage_service.dart';
 import 'usage_sync_service.dart';
 
@@ -30,11 +36,15 @@ class AppUsageSyncResult {
 /// Setiap catatan memakai `source_key` deterministik agar pembacaan bucket yang
 /// sama hanya memperbarui baris lama.
 class AppUsageSyncService {
-  AppUsageSyncService(this._usageService, this._usageRepo, this._categoryRepo);
+  AppUsageSyncService(
+    this._usageService,
+    this._usageRepo,
+    this._classificationService,
+  );
 
   final UsageService _usageService;
   final UsageRepository _usageRepo;
-  final QuotaCategoryRepository _categoryRepo;
+  final UsageClassificationService _classificationService;
 
   Future<AppUsageSyncResult> syncToday(
     DataPackage package, {
@@ -80,8 +90,6 @@ class AppUsageSyncService {
     var skipped = 0;
 
     if (appReading.status == UsageReadStatus.ok) {
-      final mainCategory = await _mainCategoryFor(packageId);
-
       for (final bucket in appReading.buckets) {
         if (bucket.totalBytes <= 0) continue;
 
@@ -96,7 +104,11 @@ class AppUsageSyncService {
             : 'uid-${bucket.uid}';
 
         try {
-          await _usageRepo.upsertRecordWithAllocations(
+          // Klasifikasi dan penyimpanan record + alokasi berjalan dalam satu
+          // transaksi repository. Upsert memakai `source_key` yang sama akan
+          // mengganti alokasi lama, sehingga sinkronisasi berulang tidak
+          // menggandakan alokasi.
+          await _classificationService.classifyAndStore(
             UsageRecord(
               packageId: packageId,
               recordScope: UsageRecordScope.appUsage,
@@ -115,18 +127,6 @@ class AppUsageSyncService {
                   '${bucket.end.millisecondsSinceEpoch}',
               recordedAt: now,
             ),
-            (usageRecordId) => [
-              UsageAllocation(
-                packageId: packageId,
-                usageRecordId: usageRecordId,
-                quotaCategoryId: mainCategory?.id,
-                allocatedBytes: bucket.totalBytes,
-                allocationMethod: mainCategory == null
-                    ? AllocationMethod.unclassified
-                    : AllocationMethod.mainFallback,
-                createdAt: now,
-              ),
-            ],
           );
           saved++;
         } catch (_) {
@@ -142,18 +142,5 @@ class AppUsageSyncService {
       savedAppRecords: saved,
       skippedAppRecords: skipped,
     );
-  }
-
-  Future<QuotaCategory?> _mainCategoryFor(String packageId) async {
-    final categories = await _categoryRepo.getByPackage(packageId);
-
-    for (final category in categories) {
-      if (category.categoryType == QuotaCategoryType.main &&
-          category.isEnabled) {
-        return category;
-      }
-    }
-
-    return null;
   }
 }

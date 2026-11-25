@@ -7,6 +7,7 @@ import 'package:datawise/repositories/in_memory/in_memory_repositories.dart';
 import 'package:datawise/services/usage_breakdown_service.dart';
 import 'package:datawise/services/usage_service.dart';
 import 'package:datawise/services/app_usage_sync_service.dart';
+import 'package:datawise/services/usage/usage_classification_service.dart';
 
 class FakeUsageMonitorService implements UsageService {
   UsageReading? deviceReading;
@@ -57,6 +58,7 @@ class FakeUsageMonitorService implements UsageService {
 void main() {
   late InMemoryPackageRepository packageRepo;
   late InMemoryQuotaCategoryRepository categoryRepo;
+  late InMemoryClassificationRuleRepository ruleRepo;
   late InMemoryUsageRepository usageRepo;
   late FakeUsageMonitorService monitor;
   late AppUsageSyncService syncService;
@@ -73,9 +75,18 @@ void main() {
   setUp(() async {
     packageRepo = InMemoryPackageRepository();
     categoryRepo = InMemoryQuotaCategoryRepository(packageRepo);
-    usageRepo = InMemoryUsageRepository(packageRepo, categoryRepo);
+    ruleRepo = InMemoryClassificationRuleRepository(packageRepo, categoryRepo);
+    usageRepo = InMemoryUsageRepository(packageRepo, categoryRepo, ruleRepo);
     monitor = FakeUsageMonitorService();
-    syncService = AppUsageSyncService(monitor, usageRepo, categoryRepo);
+    syncService = AppUsageSyncService(
+      monitor,
+      usageRepo,
+      UsageClassificationService(
+        ruleRepository: ruleRepo,
+        categoryRepository: categoryRepo,
+        usageRepository: usageRepo,
+      ),
+    );
     breakdownService = UsageBreakdownService(usageRepo);
 
     now = DateTime.now();

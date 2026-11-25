@@ -24,6 +24,7 @@ import '../services/auth_service.dart';
 import '../services/data_export_service.dart';
 import '../services/data_limit_service.dart';
 import '../services/local_notification_service.dart';
+import '../services/usage/usage_classification_service.dart';
 import '../services/usage_breakdown_service.dart';
 import '../services/usage_service.dart';
 import '../services/usage_sync_service.dart';
@@ -75,10 +76,19 @@ List<SingleChildWidget> buildAppProviders() {
     usageRepo,
   );
 
+  // Satu jalur klasifikasi untuk produksi: aturan dan kategori dibaca dari
+  // repository yang sama dengan yang dipakai UI, bukan salinan lokal.
+  final UsageClassificationService usageClassificationService =
+      UsageClassificationService(
+        ruleRepository: ruleRepo,
+        categoryRepository: categoryRepo,
+        usageRepository: usageRepo,
+      );
+
   final AppUsageSyncService appUsageSyncService = AppUsageSyncService(
     usageService,
     usageRepo,
-    categoryRepo,
+    usageClassificationService,
   );
 
   final UsageBreakdownService usageBreakdownService = UsageBreakdownService(
@@ -115,6 +125,9 @@ List<SingleChildWidget> buildAppProviders() {
     Provider<AlertSimulator>.value(value: alertSimulator),
     Provider<DataLimitService>.value(value: dataLimitService),
     Provider<UsageSyncService>.value(value: usageSyncService),
+    Provider<UsageClassificationService>.value(
+      value: usageClassificationService,
+    ),
     Provider<AppUsageSyncService>.value(value: appUsageSyncService),
     Provider<UsageBreakdownService>.value(value: usageBreakdownService),
     Provider<DataExportService>.value(value: dataExportService),
