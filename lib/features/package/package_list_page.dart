@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/routes.dart';
+import '../../features/alerts/alert_history_page.dart';
+import '../../features/alerts/alert_provider.dart';
 import '../../features/auth/auth_provider.dart';
 import '../../models/models.dart';
+import '../../shared/widgets/datawise_header.dart';
 import 'package_format.dart';
 import 'package_provider.dart';
 import 'package_theme.dart';
@@ -30,9 +33,29 @@ class _PackageListPageState extends State<PackageListPage> {
   }
 
   Future<void> _loadPackages() async {
-    final userId = context.read<AuthProvider>().currentUser?.uid;
+    final auth = context.read<AuthProvider>();
+    final packages = context.read<PackageProvider>();
+    final alerts = context.read<AlertProvider>();
+
+    final userId = auth.currentUser?.uid;
     if (userId == null) return;
-    await context.read<PackageProvider>().load(userId);
+
+    await packages.load(userId);
+
+    // Indikator lonceng membaca jumlah alert belum dibaca dari database.
+    await alerts.load(userId);
+  }
+
+  /// Membuka Notification Center, lalu memperbarui indikator lonceng.
+  Future<void> _openNotifications() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AlertHistoryPage()),
+    );
+
+    if (!mounted) return;
+
+    await _loadPackages();
   }
 
   bool _isRunning(DataPackage p) => !p.isArchived && !p.isExpiredAt();
@@ -85,46 +108,16 @@ class _PackageListPageState extends State<PackageListPage> {
   }
 
   Widget _brandHeader() {
+    final alerts = context.watch<AlertProvider>();
+
     return SafeArea(
       bottom: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 16, 6),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'DATAWISE',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: PkgPalette.of(context).primary,
-                    ),
-                  ),
-                  Text(
-                    'Paket',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: PkgPalette.of(context).text,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              onPressed: () {},
-              icon: Icon(
-                Icons.notifications_none,
-                color: PkgPalette.of(context).text,
-                size: 26,
-              ),
-            ),
-            const SizedBox(width: 2),
-            const PkgAvatar(),
-          ],
-        ),
+      // Header global yang sama dengan Dashboard: tinggi, padding, ukuran teks,
+      // dan posisi ikon kini identik.
+      child: DatawiseHeader(
+        pageLabel: 'Paket',
+        unreadCount: alerts.unreadCount,
+        onBell: _openNotifications,
       ),
     );
   }

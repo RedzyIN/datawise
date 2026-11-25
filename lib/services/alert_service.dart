@@ -299,12 +299,14 @@ class AlertServiceImpl implements AlertService {
         ),
       );
 
+      // Alert sudah tercatat untuk kejadian hari ini: jangan tampilkan lagi.
+      // Ini juga yang mencegah notifikasi muncul kembali setelah pengguna
+      // menggesernya dari notification shade, karena riwayat tidak dihapus
+      // saat pengiriman notifikasi gagal.
       if (alertId == null) continue;
 
-      var shown = false;
-
       try {
-        shown = await _sink.show(
+        await _sink.show(
           alertNotificationId(
             packageId: packageId,
             type: candidate.type,
@@ -314,17 +316,8 @@ class AlertServiceImpl implements AlertService {
           candidate.body,
         );
       } catch (_) {
-        shown = false;
-      }
-
-      if (!shown) {
-        // Pemulihan: alert yang notifikasinya gagal tidak boleh menahan
-        // deduplikasi selamanya. Hapus agar evaluasi berikutnya mencoba lagi.
-        try {
-          await _alertRepo.delete(alertId);
-        } catch (_) {
-          // Gagal membersihkan tidak boleh menggagalkan Dashboard.
-        }
+        // Kegagalan notifikasi tidak menghapus riwayat alert. Riwayat tetap
+        // tersedia di Notification Center dan tidak dikirim ulang hari itu.
       }
     }
   }

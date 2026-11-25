@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme.dart';
+import '../../shared/widgets/datawise_header.dart';
 
 import 'history_detail_page.dart';
+import '../../features/alerts/alert_history_page.dart';
+import '../../features/alerts/alert_provider.dart';
 import '../../features/auth/auth_provider.dart';
 import '../../features/package/package_provider.dart';
 import '../../models/data_package.dart';
@@ -38,16 +41,18 @@ class _HistoryPageState extends State<HistoryPage> {
     Future.microtask(() async {
       if (!mounted) return;
 
-      final currentUid = context.read<AuthProvider>().currentUser?.uid;
-      if (currentUid != uid) return;
+      final auth = context.read<AuthProvider>();
+      final packages = context.read<PackageProvider>();
+      final alerts = context.read<AlertProvider>();
 
-      await context.read<PackageProvider>().load(uid);
+      if (auth.currentUser?.uid != uid) return;
+
+      await packages.load(uid);
+      await alerts.load(uid);
 
       if (!mounted) return;
 
-      final latestUid = context.read<AuthProvider>().currentUser?.uid;
-
-      if (latestUid == uid) {
+      if (auth.currentUser?.uid == uid) {
         setState(() {
           _hasLoadedCurrentUser = true;
         });
@@ -153,7 +158,25 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   Future<void> _refreshHistory(String uid) async {
-    await context.read<PackageProvider>().load(uid);
+    final packages = context.read<PackageProvider>();
+    final alerts = context.read<AlertProvider>();
+
+    await packages.load(uid);
+    await alerts.load(uid);
+  }
+
+  /// Membuka Notification Center, lalu memperbarui indikator lonceng.
+  Future<void> _openNotifications() async {
+    final uid = context.read<AuthProvider>().currentUser?.uid;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AlertHistoryPage()),
+    );
+
+    if (!mounted || uid == null) return;
+
+    await context.read<AlertProvider>().load(uid);
   }
 
   @override
@@ -164,7 +187,38 @@ class _HistoryPageState extends State<HistoryPage> {
     final packageProvider = context.watch<PackageProvider>();
 
     final uid = authProvider.currentUser?.uid;
+    final alerts = context.watch<AlertProvider>();
 
+    return ColoredBox(
+      color: pal.background,
+      child: Column(
+        children: [
+          // Header global yang sama dengan Dashboard. Sebelumnya halaman ini
+          // tidak memiliki header sehingga hanya judul konten yang terlihat.
+          DatawiseHeader(
+            pageLabel: 'Riwayat',
+            unreadCount: alerts.unreadCount,
+            onBell: _openNotifications,
+          ),
+          Expanded(
+            child: _buildContent(
+              pal: pal,
+              authProvider: authProvider,
+              packageProvider: packageProvider,
+              uid: uid,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent({
+    required AppPageColors pal,
+    required AuthProvider authProvider,
+    required PackageProvider packageProvider,
+    required String? uid,
+  }) {
     if (authProvider.status == AuthStatus.unknown) {
       return _buildStatusView(CircularProgressIndicator(color: pal.primary));
     }
@@ -222,46 +276,43 @@ class _HistoryPageState extends State<HistoryPage> {
 
     final historyPackages = _getHistoryPackages(packageProvider.packages);
 
-    return ColoredBox(
-      color: pal.background,
-      child: RefreshIndicator(
-        color: pal.primary,
-        onRefresh: () => _refreshHistory(uid),
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-          children: [
+    return RefreshIndicator(
+      color: pal.primary,
+      onRefresh: () => _refreshHistory(uid),
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        children: [
+          Text(
+            'Riwayat Paket',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: pal.ink,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Daftar paket terdahulu beserta informasi masa berlakunya.',
+            style: TextStyle(fontSize: 14, color: pal.muted),
+          ),
+          const SizedBox(height: 24),
+
+          if (historyPackages.isEmpty)
+            _buildEmptyState()
+          else ...[
             Text(
-              'Riwayat Paket',
+              '${historyPackages.length} paket tersimpan',
               style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
                 color: pal.ink,
               ),
             ),
-            const SizedBox(height: 6),
-            Text(
-              'Daftar paket terdahulu beserta informasi masa berlakunya.',
-              style: TextStyle(fontSize: 14, color: pal.muted),
-            ),
-            const SizedBox(height: 28),
-
-            if (historyPackages.isEmpty)
-              _buildEmptyState()
-            else ...[
-              Text(
-                '${historyPackages.length} paket tersimpan',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: pal.ink,
-                ),
-              ),
-              const SizedBox(height: 12),
-              ...historyPackages.map(_buildPackageCard),
-            ],
+            const SizedBox(height: 12),
+            ...historyPackages.map(_buildPackageCard),
           ],
-        ),
+        ],
       ),
     );
   }

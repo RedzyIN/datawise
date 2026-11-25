@@ -367,24 +367,29 @@ void main() {
           completes,
         );
 
-        // Alert yang gagal dikirim tidak boleh menahan dedupe selamanya.
-        expect(await alerts.getByPackage('package-1'), isEmpty);
+        // Riwayat alert tetap disimpan walau notifikasi gagal dikirim, supaya
+        // Notification Center tidak kehilangan kejadian tersebut.
+        expect((await alerts.getByPackage('package-1')).length, 1);
       },
     );
 
-    test('alert dicoba ulang setelah notifikasi gagal dikirim', () async {
+    // Perilaku baru: kegagalan pengiriman tidak menghapus AlertLog. Sebelumnya
+    // log dihapus "agar dicoba lagi", tetapi itu membuat notifikasi yang sama
+    // dibuat ulang pada setiap refresh (termasuk setelah pengguna
+    // menggesernya dari notification shade).
+    test('alert yang gagal dikirim tidak dikirim ulang pada refresh', () async {
       sink.deliver = false;
 
       await service.evaluateAndNotify('u', pkg(), plan(pct: 120));
 
       expect(sink.shown, isEmpty);
-      expect(await alerts.getByPackage('package-1'), isEmpty);
+      expect((await alerts.getByPackage('package-1')).length, 1);
 
       sink.deliver = true;
 
       await service.evaluateAndNotify('u', pkg(), plan(pct: 120));
 
-      expect(sink.shown, ['Target harian terlampaui']);
+      expect(sink.shown, isEmpty);
       expect((await alerts.getByPackage('package-1')).length, 1);
     });
 

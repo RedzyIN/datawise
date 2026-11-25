@@ -1,13 +1,14 @@
-// Halaman riwayat Smart Alerts.
+// Notification Center DATAWISE.
 //
-// Hanya membaca data dari AlertProvider; tidak mengakses repository SQLite
-// secara langsung.
+// UI -> AlertProvider -> AlertRepository -> SQLite. Halaman ini tidak pernah
+// mengakses repository atau SQLite secara langsung.
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/format_utils.dart';
 import '../../core/theme.dart';
 import '../../models/models.dart';
+import '../../shared/widgets/datawise_header.dart';
 import '../auth/auth_provider.dart';
 import 'alert_provider.dart';
 
@@ -39,7 +40,7 @@ class _AlertHistoryPageState extends State<AlertHistoryPage> {
     });
   }
 
-  String _formatTime(DateTime time) {
+  String _formatDate(DateTime time) {
     const months = [
       'Jan',
       'Feb',
@@ -55,11 +56,25 @@ class _AlertHistoryPageState extends State<AlertHistoryPage> {
       'Des',
     ];
 
+    return '${time.day} ${months[time.month - 1]} ${time.year}';
+  }
+
+  String _formatTime(DateTime time) {
     final hour = time.hour.toString().padLeft(2, '0');
     final minute = time.minute.toString().padLeft(2, '0');
 
-    return '${time.day} ${months[time.month - 1]} ${time.year} • '
-        '$hour:$minute';
+    return '${_formatDate(time)} • $hour:$minute';
+  }
+
+  /// Label kelompok tanggal untuk daftar notifikasi.
+  String _dayLabel(DateTime time) {
+    final today = dateOnly(DateTime.now());
+    final day = dateOnly(time);
+
+    if (day == today) return 'Hari Ini';
+    if (day == today.subtract(const Duration(days: 1))) return 'Kemarin';
+
+    return _formatDate(time);
   }
 
   String _typeLabel(String alertType) {
@@ -84,6 +99,25 @@ class _AlertHistoryPageState extends State<AlertHistoryPage> {
     };
   }
 
+  Future<void> _markAllRead() async {
+    final provider = context.read<AlertProvider>();
+    final messenger = ScaffoldMessenger.of(context);
+
+    final success = await provider.markAllRead();
+
+    if (!mounted) return;
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          success
+              ? 'Semua notifikasi ditandai sudah dibaca.'
+              : 'Gagal menandai notifikasi.',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -93,21 +127,18 @@ class _AlertHistoryPageState extends State<AlertHistoryPage> {
 
     return Scaffold(
       backgroundColor: pal.background,
-      appBar: AppBar(
-        backgroundColor: pal.background,
-        foregroundColor: pal.ink,
-        title: const Text('Riwayat Notifikasi'),
-        actions: [
-          if (provider.unreadCount > 0)
-            TextButton(
-              onPressed: () async {
-                await context.read<AlertProvider>().markAllRead();
-              },
-              child: const Text('Tandai semua'),
+      body: SafeArea(
+        child: Column(
+          children: [
+            DatawiseHeader(
+              pageLabel: 'Notifikasi',
+              unreadCount: provider.unreadCount,
+              onBack: () => Navigator.maybePop(context),
             ),
-        ],
+            Expanded(child: _buildBody(uid, provider)),
+          ],
+        ),
       ),
-      body: _buildBody(uid, provider),
     );
   }
 
@@ -133,8 +164,12 @@ class _AlertHistoryPageState extends State<AlertHistoryPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Gagal memuat riwayat notifikasi.',
-              style: TextStyle(color: pal.ink, fontWeight: FontWeight.w600),
+              'Gagal memuat notifikasi.',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: pal.ink,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -153,7 +188,15 @@ class _AlertHistoryPageState extends State<AlertHistoryPage> {
     }
 
     if (provider.isEmpty) {
-      return _statusView(_buildEmptyState());
+      return RefreshIndicator(
+        color: pal.primary,
+        onRefresh: () => context.read<AlertProvider>().refresh(uid),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          children: [_buildEmptyState()],
+        ),
+      );
     }
 
     return RefreshIndicator(
@@ -161,15 +204,11 @@ class _AlertHistoryPageState extends State<AlertHistoryPage> {
       onRefresh: () => context.read<AlertProvider>().refresh(uid),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
-          Text(
-            '${provider.entries.length} notifikasi • '
-            '${provider.unreadCount} belum dibaca',
-            style: TextStyle(fontSize: 13, color: pal.muted),
-          ),
+          _buildSummary(provider),
           const SizedBox(height: 16),
-          ...provider.entries.map(_buildAlertCard),
+          ..._buildGroupedCards(provider.entries),
         ],
       ),
     );
@@ -178,6 +217,76 @@ class _AlertHistoryPageState extends State<AlertHistoryPage> {
   Widget _statusView(Widget child) {
     return Center(
       child: Padding(padding: const EdgeInsets.all(24), child: child),
+    );
+  }
+
+  Widget _buildSummary(AlertProvider provider) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Text(
+                'Semua Notifikasi',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: pal.ink,
+                ),
+              ),
+            ),
+            if (provider.unreadCount > 0)
+              TextButton(
+                onPressed: _markAllRead,
+                child: const Text(
+                  'Tandai Semua Dibaca',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+              ),
+          ],
+        ),
+        Text(
+          '${provider.unreadCount} belum dibaca • '
+          '${provider.entries.length} notifikasi',
+          style: TextStyle(fontSize: 12, color: pal.muted),
+        ),
+      ],
+    );
+  }
+
+  /// Notifikasi dikelompokkan per tanggal, terbaru lebih dulu.
+  List<Widget> _buildGroupedCards(List<AlertHistoryEntry> entries) {
+    final widgets = <Widget>[];
+    String? currentLabel;
+
+    for (final entry in entries) {
+      final label = _dayLabel(entry.alert.triggeredAt);
+
+      if (label != currentLabel) {
+        currentLabel = label;
+        widgets.add(_buildGroupHeader(label));
+      }
+
+      widgets.add(_buildAlertCard(entry));
+    }
+
+    return widgets;
+  }
+
+  Widget _buildGroupHeader(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 8),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          letterSpacing: .3,
+          color: pal.muted,
+        ),
+      ),
     );
   }
 

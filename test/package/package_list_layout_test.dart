@@ -1,5 +1,6 @@
 // Regresi layout: Daftar Paket tidak boleh overflow pada layar sempit.
 import 'package:datawise/core/theme.dart';
+import 'package:datawise/features/alerts/alert_provider.dart';
 import 'package:datawise/features/auth/auth_provider.dart';
 import 'package:datawise/features/package/package_list_page.dart';
 import 'package:datawise/features/package/package_provider.dart';
@@ -27,12 +28,18 @@ Future<void> _pumpPage(WidgetTester tester, double width) async {
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
+  final packages = InMemoryPackageRepository();
+
   await tester.pumpWidget(
     MultiProvider(
       providers: [
         ChangeNotifierProvider<AuthProvider>(create: (_) => _FakeAuth()),
         ChangeNotifierProvider<PackageProvider>(
           create: (_) => PackageProvider(_FakeRepo()),
+        ),
+        ChangeNotifierProvider<AlertProvider>(
+          create: (_) =>
+              AlertProvider(InMemoryAlertRepository(packages), packages),
         ),
       ],
       child: MaterialApp(

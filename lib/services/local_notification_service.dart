@@ -6,9 +6,11 @@
 // satu alur izin POST_NOTIFICATIONS, tetapi tetap memakai channel Android yang
 // berbeda agar pengguna dapat mengatur keduanya secara terpisah.
 //
-// Setiap metode pengiriman mengembalikan `true` hanya jika notifikasi benar
-// benar dikirim. Pemanggil memakai nilai itu untuk membatalkan penandaan
-// deduplikasi ketika pengiriman gagal.
+// Setiap metode pengiriman mengembalikan `true` bila notifikasi berada di
+// notification shade (baru dikirim, atau sudah dikirim pada proses ini).
+// Pemanggil sengaja TIDAK mengulang pengiriman ketika hasilnya `false`:
+// AlertLog yang sudah tercatat adalah penanda "sudah diberitahukan hari ini",
+// sehingga kegagalan sesaat tidak boleh memunculkan notifikasi berulang.
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
@@ -48,6 +50,15 @@ class FlutterLocalNotificationService implements LocalNotificationService {
 
   final FlutterLocalNotificationsPlugin _plugin;
   Future<bool>? _initialization;
+
+  /// Id notifikasi yang sudah dikirim pada proses aplikasi ini.
+  ///
+  /// Deduplikasi AlertLog saja tidak cukup: bila baris riwayat terhapus atau
+  /// beberapa jalur evaluasi berjalan hampir bersamaan, notifikasi dengan
+  /// id yang sama tidak boleh ditampilkan dua kali. Id berasal dari kunci
+  /// deduplikasi (paket + jenis + tanggal lokal), jadi kejadian baru tetap
+  /// mendapat id baru dan tetap tampil.
+  final Set<int> _delivered = <int>{};
 
   @override
   Future<bool> init() => _initialization ??= _init();
@@ -166,6 +177,10 @@ class FlutterLocalNotificationService implements LocalNotificationService {
   }) async {
     if (!await init()) return false;
 
+    // Sudah dikirim pada proses ini: jangan tampilkan ulang, termasuk setelah
+    // pengguna menggeser notifikasi tersebut dari notification shade.
+    if (_delivered.contains(id)) return true;
+
     try {
       await _plugin.show(
         id: id,
@@ -183,8 +198,12 @@ class FlutterLocalNotificationService implements LocalNotificationService {
         ),
       );
 
+      _delivered.add(id);
       return true;
-    } catch (_) {
+    } catch (error) {
+      // Kegagalan tidak diulang oleh pemanggil, jadi catat agar tetap dapat
+      // didiagnosis saat pengujian perangkat.
+      debugPrint('Notifikasi lokal gagal ditampilkan: $error');
       return false;
     }
   }

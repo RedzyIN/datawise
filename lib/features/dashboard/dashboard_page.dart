@@ -9,10 +9,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme.dart';
+import '../../services/dashboard_data_limit_calculator.dart';
+import '../../shared/widgets/datawise_header.dart';
 
 import '../../core/constants.dart';
 import '../../core/routes.dart';
 import '../../models/models.dart';
+import '../alerts/alert_history_page.dart';
+import '../alerts/alert_provider.dart';
 import '../auth/auth_provider.dart';
 import 'dashboard_provider.dart';
 
@@ -102,6 +106,7 @@ class _DashView {
     this.todayPercentLabel,
     this.weekPercentLabel,
     this.targetBytes,
+    this.todayTone = DataLimitTone.unknown,
     required this.packageForNav,
     this.categories = const [],
     this.unclassifiedBytes = 0,
@@ -117,6 +122,9 @@ class _DashView {
   final String? daysLeft; // null = tidak ditampilkan angka hari
   final String endDate;
   final String todayValue, todayTarget, todayBadge;
+
+  /// Nada status batas harian untuk warna badge "Hari Ini".
+  final DataLimitTone todayTone;
   final double todayProgress;
   final String weekValue, weekSubtitle, weekFooter;
   final double weekProgress;
@@ -161,6 +169,7 @@ class _DashView {
       todayValue: '0,90 GB',
       todayTarget: '1,53 GB',
       todayBadge: 'Aman',
+      todayTone: DataLimitTone.safe,
       todayProgress: .59,
       todayPercentLabel: '59%',
       weekValue: '10,71 GB',
@@ -241,6 +250,16 @@ class _DashView {
     }
 
     final pct = plan?.todayPercentOfTarget;
+
+    // Batas efektif: batas manual pengguna, atau target harian Data Planner bila
+    // pengguna belum mengaturnya. Formula planner itu sendiri tidak diubah.
+    final limitStatus = d.dataLimit;
+    final effectiveLimitBytes = limitStatus.isConfigured
+        ? limitStatus.limitBytes
+        : null;
+    final effectivePercent = limitStatus.isConfigured
+        ? limitStatus.percent
+        : pct;
     final weeklyTarget = plan?.weeklyTargetBytes;
     final packageStart = dateOnly(pkg.startDate);
     final cycleWeek = (today.difference(packageStart).inDays ~/ 7) + 1;
@@ -276,12 +295,15 @@ class _DashView {
       daysLeft: daysLeft,
       endDate: _longDate(pkg.endDate),
       todayValue: _gb(plan?.todayUsedBytes ?? d.dailyUsage[today] ?? 0),
-      todayTarget: dailyTarget != null ? _gb(dailyTarget) : '—',
-      todayBadge: pct == null
-          ? '—'
-          : (pct > 100 ? 'Melebihi' : (pct >= 80 ? 'Hampir' : 'Aman')),
-      todayProgress: pct != null ? (pct / 100).clamp(0.0, 1.0) : 0,
-      todayPercentLabel: pct == null ? null : '${pct.toStringAsFixed(0)}%',
+      todayTarget: effectiveLimitBytes != null ? _gb(effectiveLimitBytes) : '—',
+      todayBadge: _todayBadgeLabel(effectivePercent),
+      todayTone: toneForPercent(effectivePercent),
+      todayProgress: effectivePercent != null
+          ? (effectivePercent / 100).clamp(0.0, 1.0)
+          : 0,
+      todayPercentLabel: effectivePercent == null
+          ? null
+          : '${effectivePercent.toStringAsFixed(0)}%',
       weekValue: weeklyTarget != null ? _gb(weeklyTarget) : '—',
       weekSubtitle: 'Minggu ke-${cycleWeek < 1 ? 1 : cycleWeek} Siklus',
       weekFooter: 'Terpakai ${_gb(cycleUsed)}',
@@ -321,6 +343,16 @@ class _DashView {
       packageForNav: pkg,
       overQuota: plan != null && plan.usedBytes > plan.totalBytes,
     );
+  }
+
+  static String _todayBadgeLabel(double? percent) {
+    return switch (toneForPercent(percent)) {
+      DataLimitTone.safe => 'Aman',
+      DataLimitTone.warning => 'Hampir',
+      DataLimitTone.danger =>
+        (percent != null && percent > 100) ? 'Melebihi' : 'Mencapai',
+      DataLimitTone.unknown => '—',
+    };
   }
 
   static String _nameFrom(AppUser u) {
@@ -373,6 +405,29 @@ class _DashboardPageState extends State<DashboardPage>
     final uid = context.read<AuthProvider>().currentUser?.uid;
     if (uid == null) return;
     await context.read<DashboardProvider>().refresh(uid);
+
+    // Evaluasi Smart Alerts terjadi di dalam refresh Dashboard, sehingga
+    // indikator lonceng dibaca ulang setelahnya agar jumlahnya sesuai database.
+    await _loadAlerts();
+  }
+
+  Future<void> _loadAlerts() async {
+    if (!mounted) return;
+    final uid = context.read<AuthProvider>().currentUser?.uid;
+    if (uid == null) return;
+    await context.read<AlertProvider>().load(uid);
+  }
+
+  /// Membuka Notification Center, lalu memperbarui indikator lonceng.
+  Future<void> _openNotificationCenter() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AlertHistoryPage()),
+    );
+
+    if (!mounted) return;
+
+    await _loadAlerts();
   }
 
   @override
@@ -381,11 +436,18 @@ class _DashboardPageState extends State<DashboardPage>
 
     final d = context.watch<DashboardProvider>();
     final user = context.watch<AuthProvider>().currentUser;
+    final unreadAlerts = context.watch<AlertProvider>().unreadCount;
 
     Widget body;
     if (user == null) {
       // Belum ada sesi login (pekan 1 / AuthProvider belum jadi): tampilkan data contoh.
-      body = _content(context, _DashView.mock(), d, preview: true);
+      body = _content(
+        context,
+        _DashView.mock(),
+        d,
+        preview: true,
+        unreadAlerts: unreadAlerts,
+      );
     } else {
       switch (d.loadState) {
         case DashboardLoad.loading:
@@ -393,9 +455,14 @@ class _DashboardPageState extends State<DashboardPage>
         case DashboardLoad.error:
           body = _ErrorState(message: d.errorMessage, onRetry: _load);
         case DashboardLoad.noPackage:
-          body = _emptyState(context, user, d);
+          body = _emptyState(context, user, d, unreadAlerts);
         case DashboardLoad.ready:
-          body = _content(context, _DashView.fromProvider(d, user), d);
+          body = _content(
+            context,
+            _DashView.fromProvider(d, user),
+            d,
+            unreadAlerts: unreadAlerts,
+          );
       }
     }
 
@@ -420,6 +487,7 @@ class _DashboardPageState extends State<DashboardPage>
     _DashView v,
     DashboardProvider d, {
     bool preview = false,
+    required int unreadAlerts,
   }) {
     return RefreshIndicator(
       color: pal.primary,
@@ -430,7 +498,8 @@ class _DashboardPageState extends State<DashboardPage>
         children: [
           _Header(
             v: v,
-            onBell: () => _showNotifications(context),
+            unreadAlerts: unreadAlerts,
+            onBell: _openNotificationCenter,
             onStatus: () => _showStatus(context, d, preview),
           ),
           SizedBox(height: _u(12)),
@@ -493,7 +562,12 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _emptyState(BuildContext context, AppUser user, DashboardProvider d) {
+  Widget _emptyState(
+    BuildContext context,
+    AppUser user,
+    DashboardProvider d,
+    int unreadAlerts,
+  ) {
     final v = _DashView.mock();
     final header = _DashView(
       userName: _DashView._nameFrom(user),
@@ -530,7 +604,8 @@ class _DashboardPageState extends State<DashboardPage>
         children: [
           _Header(
             v: header,
-            onBell: () => _showNotifications(context),
+            unreadAlerts: unreadAlerts,
+            onBell: _openNotificationCenter,
             onStatus: () => _showStatus(context, d, false),
           ),
           if (!d.hasPermission) ...[
@@ -632,24 +707,6 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  void _showNotifications(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Notifikasi'),
-        content: const Text(
-          'Belum ada notifikasi baru. Peringatan kuota akan muncul di sini setelah layanan notifikasi aktif.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Tutup'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showStatus(BuildContext context, DashboardProvider d, bool preview) {
     final granted = d.hasPermission;
     final r = d.lastReading;
@@ -729,11 +786,13 @@ BoxDecoration _cardDecoration(AppPageColors pal, {double radius = 14}) =>
 class _Header extends StatelessWidget {
   const _Header({
     required this.v,
+    required this.unreadAlerts,
     required this.onBell,
     required this.onStatus,
   });
 
   final _DashView v;
+  final int unreadAlerts;
   final VoidCallback onBell, onStatus;
 
   @override
@@ -743,54 +802,13 @@ class _Header extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'DATAWISE',
-                    style: TextStyle(
-                      color: pal.ink,
-                      fontWeight: FontWeight.w800,
-                      fontSize: _u(11),
-                      letterSpacing: .4,
-                    ),
-                  ),
-                  Text(
-                    'Beranda',
-                    style: TextStyle(color: pal.muted, fontSize: _u(8)),
-                  ),
-                ],
-              ),
-            ),
-            GestureDetector(
-              onTap: onBell,
-              child: Padding(
-                padding: EdgeInsets.all(_u(6)),
-                child: Icon(
-                  Icons.notifications_none_rounded,
-                  color: pal.ink,
-                  size: _u(17),
-                ),
-              ),
-            ),
-            SizedBox(width: _u(4)),
-            Container(
-              width: _u(26),
-              height: _u(26),
-              decoration: BoxDecoration(
-                color: pal.avatarBg,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.person,
-                color: pal.isDark ? AppPalette.teksGelap : Colors.white,
-                size: _u(18),
-              ),
-            ),
-          ],
+        // Header global: ukuran, padding, dan posisi ikon mengikuti standar
+        // Dashboard dan dipakai juga oleh halaman Paket serta Riwayat.
+        DatawiseHeader(
+          pageLabel: 'Beranda',
+          unreadCount: unreadAlerts,
+          onBell: onBell,
+          padding: EdgeInsets.zero,
         ),
         SizedBox(height: _u(6)),
         Row(
@@ -1124,7 +1142,11 @@ class _DailyWeekly extends StatelessWidget {
           Expanded(
             child: _MetricCard(
               title: 'Hari Ini',
-              trailing: _Badge(label: v.todayBadge, dot: true),
+              trailing: _Badge(
+                label: v.todayBadge,
+                dot: true,
+                tone: v.todayTone,
+              ),
               value: v.todayValue,
               subtitle: Text.rich(
                 TextSpan(
@@ -1197,31 +1219,47 @@ class _DailyWeekly extends StatelessWidget {
 }
 
 class _Badge extends StatelessWidget {
-  const _Badge({required this.label, this.dot = false});
+  const _Badge({
+    required this.label,
+    this.dot = false,
+    this.tone = DataLimitTone.unknown,
+  });
+
   final String label;
   final bool dot;
+
+  /// Warna mengikuti status batas harian: aman (teal), hampir mencapai
+  /// (kuning), mencapai/melebihi batas (merah).
+  final DataLimitTone tone;
 
   @override
   Widget build(BuildContext context) {
     final pal = AppPageColors.of(context);
 
+    final (Color background, Color foreground) = switch (tone) {
+      DataLimitTone.safe => (pal.mint, pal.primary),
+      DataLimitTone.warning => (pal.noticeBg, pal.warningInk),
+      DataLimitTone.danger => (pal.dangerBg, pal.danger),
+      DataLimitTone.unknown => (pal.surfaceAlt, pal.muted),
+    };
+
     return Container(
       padding: EdgeInsets.symmetric(horizontal: _u(7), vertical: _u(3)),
       decoration: BoxDecoration(
-        color: pal.mint,
+        color: background,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (dot) ...[
-            Icon(Icons.circle, size: _u(5), color: pal.primary),
+            Icon(Icons.circle, size: _u(5), color: foreground),
             SizedBox(width: _u(3)),
           ],
           Text(
             label,
             style: TextStyle(
-              color: pal.primary,
+              color: foreground,
               fontSize: _u(7.5),
               fontWeight: FontWeight.w700,
             ),
