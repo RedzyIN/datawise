@@ -66,6 +66,9 @@ class _PackageFormPageState extends State<PackageFormPage> {
   final _nameController = TextEditingController();
   final _totalQuotaController = TextEditingController();
 
+  /// Pemakaian yang sudah terjadi sebelum paket dicatat di DATAWISE.
+  final _initialUsedController = TextEditingController(text: '0');
+
   DataPackage? _editing;
   bool _initialized = false;
   bool _isActive = false;
@@ -74,6 +77,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
   bool _criticalReminder = true; // Hanya tampilan; belum disimpan.
 
   _Unit _totalUnit = _Unit.gb;
+  _Unit _initialUnit = _Unit.gb;
 
   /// Kategori tambahan yang dibuat saat menambah paket. Disimpan ke database
   /// setelah paket berhasil dibuat.
@@ -128,6 +132,9 @@ class _PackageFormPageState extends State<PackageFormPage> {
       if (packageId != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
+          // Membaca baseline pemakaian awal yang sudah tersimpan agar form
+          // edit menampilkan nilai sebenarnya, bukan 0.
+          context.read<PackageProvider>().loadUsageFor(package);
           context.read<QuotaCategoryProvider>().load(packageId);
         });
       }
@@ -140,6 +147,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
   void dispose() {
     _nameController.dispose();
     _totalQuotaController.dispose();
+    _initialUsedController.dispose();
     super.dispose();
   }
 
@@ -155,12 +163,49 @@ class _PackageFormPageState extends State<PackageFormPage> {
       double.tryParse(text.trim().replaceAll(',', '.'));
 
   int _toBytes(double value, _Unit unit) =>
-      (value * (unit == _Unit.gb ? 1000000000 : 1000000)).round();
+      quotaBytesFromInput(value, inGigabytes: unit == _Unit.gb);
 
   int _totalBytes() {
     final parsed = _parse(_totalQuotaController.text);
     if (parsed == null || !parsed.isFinite || parsed <= 0) return 0;
     return _toBytes(parsed, _totalUnit);
+  }
+
+  /// Pemakaian awal dari input form (0 jika kosong atau tidak valid).
+  int _initialUsedBytes() {
+    final parsed = _parse(_initialUsedController.text);
+    if (parsed == null || !parsed.isFinite || parsed <= 0) return 0;
+    return quotaBytesFromInput(parsed, inGigabytes: _initialUnit == _Unit.gb);
+  }
+
+  /// Sisa kuota awal yang langsung dihitung dan ditampilkan di form.
+  int _remainingInitialBytes() =>
+      remainingInitialBytes(_totalBytes(), _initialUsedBytes());
+
+  String? _validateInitialUsed(String? value) {
+    final text = (value ?? '').trim();
+    if (text.isEmpty) return null; // kosong dianggap 0
+
+    final number = _parse(text);
+    if (number == null || !number.isFinite) {
+      return 'Kuota terpakai harus berupa angka.';
+    }
+    if (number < 0) {
+      return 'Kuota terpakai tidak boleh negatif.';
+    }
+
+    final total = _totalBytes();
+    final bytes = quotaBytesFromInput(
+      number,
+      inGigabytes: _initialUnit == _Unit.gb,
+    );
+
+    if (total > 0 && bytes > total) {
+      return 'Kuota terpakai tidak boleh melebihi total kuota '
+          '(${formatBytes(total)}).';
+    }
+
+    return null;
   }
 
   int _draftAllocatedBytes([int? excludeIndex]) {
@@ -415,6 +460,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
       _parse(_totalQuotaController.text)!,
       _totalUnit,
     );
+    final initialUsedBytes = _isEditing ? 0 : _initialUsedBytes();
 
     final now = DateTime.now();
     final endPassed = _endDate.isBefore(DateUtils.dateOnly(now));
@@ -462,7 +508,11 @@ class _PackageFormPageState extends State<PackageFormPage> {
 
     final success = _isEditing
         ? await provider.updatePackage(package)
-        : await provider.addPackage(package, categories: draftCategories);
+        : await provider.addPackage(
+            package,
+            initialUsedBytes: initialUsedBytes,
+            categories: draftCategories,
+          );
 
     if (!mounted) return;
 
@@ -584,6 +634,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
     required String? Function(String?) validator,
     required _Unit unit,
     required ValueChanged<_Unit> onUnit,
+    ValueChanged<String>? onChanged,
     bool showSuffix = false,
   }) {
     return Row(
@@ -601,6 +652,7 @@ class _PackageFormPageState extends State<PackageFormPage> {
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]')),
             ],
+            onChanged: onChanged,
             validator: validator,
           ),
         ),
@@ -845,6 +897,104 @@ class _PackageFormPageState extends State<PackageFormPage> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Bagian "Kuota Sudah Terpakai".
+  ///
+  /// Saat menambah paket, nilainya menjadi baseline pemakaian yang disimpan
+  /// sebagai satu catatan MANUAL_TOTAL. Saat mengedit paket, nilainya hanya
+  /// ditampilkan karena baseline yang sudah tercatat tidak boleh dihitung ulang.
+  Widget _initialUsageSection(PackageProvider provider) {
+    final pal = PkgPalette.of(context);
+
+    if (_isEditing) {
+      final baseline = provider.initialUsedFor(_editingPackageId);
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _label('Kuota Sudah Terpakai', trailing: 'Tersimpan'),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: pal.field,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                const PkgIconBox(Icons.history, size: 36),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Pemakaian awal ${formatBytes(baseline)} sudah tercatat '
+                    'sebagai bagian dari pemakaian paket ini dan tidak diubah '
+                    'saat paket diedit.',
+                    style: TextStyle(
+                      color: pal.muted,
+                      fontSize: 12,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label('Kuota Sudah Terpakai', trailing: 'Opsional'),
+        Text(
+          'Masukkan jumlah kuota yang sudah digunakan sebelum paket ini '
+          'dicatat di DATAWISE. Isi 0 jika paket masih baru.',
+          style: TextStyle(color: pal.muted, fontSize: 12, height: 1.35),
+        ),
+        const SizedBox(height: 10),
+        _quotaRow(
+          controller: _initialUsedController,
+          hint: '0',
+          validator: _validateInitialUsed,
+          unit: _initialUnit,
+          onUnit: (u) => setState(() => _initialUnit = u),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: pal.chip,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.savings_outlined, size: 18, color: pal.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Sisa kuota awal',
+                  style: TextStyle(
+                    color: pal.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              Text(
+                formatBytes(_remainingInitialBytes()),
+                style: TextStyle(
+                  color: pal.primary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -1166,8 +1316,11 @@ class _PackageFormPageState extends State<PackageFormPage> {
                         validator: _validateTotal,
                         unit: _totalUnit,
                         onUnit: (u) => setState(() => _totalUnit = u),
+                        onChanged: (_) => setState(() {}),
                         showSuffix: true,
                       ),
+                      const SizedBox(height: 18),
+                      _initialUsageSection(provider),
                       const SizedBox(height: 18),
                       if (_isEditing && _editing != null)
                         _savedCategorySection(_editing!, categoryProvider)

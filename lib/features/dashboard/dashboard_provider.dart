@@ -7,9 +7,9 @@ import '../../repositories/repositories.dart';
 import '../../services/alert_service.dart';
 import '../../services/dashboard_data_limit_calculator.dart';
 import '../../services/data_limit_service.dart';
+import '../../services/app_usage_sync_service.dart';
 import '../../services/planner_service.dart';
 import '../../services/usage_service.dart';
-import '../../services/usage_sync_service.dart';
 import '../../services/usage_totals.dart';
 
 enum DashboardLoad { loading, ready, noPackage, error }
@@ -46,11 +46,11 @@ class DashboardProvider extends ChangeNotifier {
     this.categoryRepo,
     this.dataLimitRepo,
     this.dataLimitService,
-    UsageSyncService? syncService,
+    required AppUsageSyncService syncService,
     DashboardPlanner? planner,
   }) : _usageRepo = usageRepo,
        _usageService = usageService,
-       _sync = syncService ?? UsageSyncServiceImpl(usageService, usageRepo),
+       _sync = syncService,
        _planner = planner ?? PlannerService.calculate;
 
   final PackageRepository _packageRepo;
@@ -65,7 +65,7 @@ class DashboardProvider extends ChangeNotifier {
   /// Dashboard tetap dapat dipakai tanpa fitur minggu 2.
   final DataLimitService? dataLimitService;
 
-  final UsageSyncService _sync;
+  final AppUsageSyncService _sync;
   final DashboardPlanner _planner;
 
   DashboardLoad loadState = DashboardLoad.loading;
@@ -75,7 +75,17 @@ class DashboardProvider extends ChangeNotifier {
   List<UsageRecord> records = const [];
 
   List<CategoryUsage> categoryUsage = const [];
-  int unclassifiedBytes = 0;
+
+  /// Byte APP_USAGE efektif yang tidak memiliki kategori valid.
+  int unclassifiedAppBytes = 0;
+
+  /// Selisih DEVICE_TOTAL terhadap jumlah APP_USAGE pada hari yang memakai
+  /// DEVICE_TOTAL. Selisih ini tidak pernah dibebankan ke kategori.
+  int unmappedDeviceBytes = 0;
+
+  /// Total byte yang tidak masuk kategori mana pun untuk UI lama. Nilainya
+  /// gabungan dua state di atas dan tidak memengaruhi perhitungan kategori.
+  int get unclassifiedBytes => unclassifiedAppBytes + unmappedDeviceBytes;
 
   DashboardDataLimitStatus dataLimit = DashboardDataLimitStatus.none;
 
@@ -86,7 +96,7 @@ class DashboardProvider extends ChangeNotifier {
 
   bool hasPermission = false;
   UsageReading? lastReading;
-  UsageSyncResult? lastSync;
+  AppUsageSyncResult? lastSync;
   String? syncMessage;
   DateTime? lastUpdatedAt;
 
@@ -116,7 +126,8 @@ class DashboardProvider extends ChangeNotifier {
     records = const [];
 
     categoryUsage = const [];
-    unclassifiedBytes = 0;
+    unclassifiedAppBytes = 0;
+    unmappedDeviceBytes = 0;
     dataLimit = DashboardDataLimitStatus.none;
 
     dailyUsage = const {};
@@ -179,11 +190,16 @@ class DashboardProvider extends ChangeNotifier {
 
         if (gen != _generation) return;
 
-        lastSync = sync;
-        lastReading = sync.reading;
-        syncMessage = sync.saved ? null : sync.message;
+        final deviceReading = sync.deviceReading;
+        final deviceSaved =
+            deviceReading != null && deviceReading.status == UsageReadStatus.ok;
+        final appSaved = sync.savedAppRecords > 0;
 
-        if (sync.saved) {
+        lastSync = sync;
+        lastReading = deviceReading;
+        syncMessage = deviceSaved || appSaved ? null : deviceReading?.message;
+
+        if (deviceSaved || appSaved) {
           lastUpdatedAt = DateTime.now();
         }
       } else {
@@ -232,19 +248,66 @@ class DashboardProvider extends ChangeNotifier {
 
       final todayUsed = loadedDaily[today] ?? 0;
 
-      // Simpan ID catatan yang benar-benar digunakan dalam perhitungan.
-      final effectiveRecordIds = <String>{
-        for (final dayRecords in effectiveRecords.values)
-          for (final record in dayRecords)
-            if (record.id != null) record.id!,
+      // Sumber alokasi kategori hanya catatan yang memang boleh memiliki
+      // alokasi pada hari efektifnya:
+      // - hari MANUAL_TOTAL -> alokasi manual pengguna;
+      // - hari DEVICE_TOTAL -> APP_USAGE hari itu (DEVICE_TOTAL tidak pernah
+      //   dialokasikan);
+      // - hari APP_USAGE    -> APP_USAGE itu sendiri.
+      // Karena satu hari hanya memakai satu sumber efektif, alokasi dari
+      // MANUAL_TOTAL dan APP_USAGE tidak pernah dijumlahkan bersamaan.
+      final loadedByDay = <DateTime, List<UsageRecord>>{};
+
+      for (final record in loadedRecords) {
+        if (record.networkType == NetworkType.wifi) continue;
+
+        loadedByDay
+            .putIfAbsent(dateOnly(record.periodStartAt), () => [])
+            .add(record);
+      }
+
+      final allocationSourceRecords = <UsageRecord>[];
+
+      for (final entry in effectiveRecords.entries) {
+        final manualIsEffective = entry.value.any(
+          (record) => record.recordScope == UsageRecordScope.manualTotal,
+        );
+
+        if (manualIsEffective) {
+          // MANUAL_TOTAL adalah deklarasi total pengguna untuk hari itu;
+          // APP_USAGE pada hari yang sama tidak boleh ikut dialokasikan.
+          allocationSourceRecords.addAll(
+            entry.value.where(
+              (record) =>
+                  record.id != null &&
+                  record.recordScope == UsageRecordScope.manualTotal,
+            ),
+          );
+          continue;
+        }
+
+        // DEVICE_TOTAL maupun APP_USAGE sebagai sumber efektif tetap memakai
+        // APP_USAGE hari itu untuk kategori. DEVICE_TOTAL tidak dialokasikan.
+        allocationSourceRecords.addAll(
+          (loadedByDay[entry.key] ?? const <UsageRecord>[]).where(
+            (record) =>
+                record.id != null &&
+                record.recordScope == UsageRecordScope.appUsage,
+          ),
+        );
+      }
+
+      final allocationSourceIds = <String>{
+        for (final record in allocationSourceRecords) record.id!,
       };
 
-      // Hitung alokasi hanya dari catatan pemakaian efektif.
+      // Hitung alokasi hanya dari catatan sumber kategori di atas. Dengan
+      // begitu alokasi APP_USAGE tetap terbaca walau DEVICE_TOTAL tersedia.
       final allocatedByCategory = <String, int>{};
       final allocatedByRecord = <String, int>{};
 
       for (final allocation in allocations) {
-        if (!effectiveRecordIds.contains(allocation.usageRecordId)) {
+        if (!allocationSourceIds.contains(allocation.usageRecordId)) {
           continue;
         }
 
@@ -265,8 +328,7 @@ class DashboardProvider extends ChangeNotifier {
         }
 
         // Alokasi UNCLASSIFIED (quota_category_id null) sengaja tidak
-        // dihitung sebagai pemakaian kategori. Byte-nya tetap muncul pada
-        // bagian "belum terklasifikasi" di bawah.
+        // dihitung sebagai pemakaian kategori.
       }
 
       // Bentuk ringkasan kategori untuk Dashboard.
@@ -280,20 +342,55 @@ class DashboardProvider extends ChangeNotifier {
           ),
       ];
 
-      // Hitung pemakaian yang belum dialokasikan ke kategori.
-      var unallocated = 0;
+      // Byte APP_USAGE efektif yang tidak masuk kategori mana pun, termasuk
+      // alokasi UNCLASSIFIED. Angka ini berbeda dari selisih perangkat.
+      var unclassifiedApp = 0;
 
-      for (final dayRecords in effectiveRecords.values) {
-        for (final record in dayRecords) {
-          final allocated = record.id == null
-              ? 0
-              : allocatedByRecord[record.id!] ?? 0;
+      for (final record in allocationSourceRecords) {
+        if (record.recordScope != UsageRecordScope.appUsage) continue;
 
-          final remainder = record.totalBytes - allocated;
+        final allocated = allocatedByRecord[record.id!] ?? 0;
+        final remainder = record.totalBytes - allocated;
 
-          if (remainder > 0) {
-            unallocated += remainder;
-          }
+        if (remainder > 0) {
+          unclassifiedApp += remainder;
+        }
+      }
+
+      // Selisih DEVICE_TOTAL terhadap jumlah APP_USAGE pada hari yang sama.
+      // Selisih ini tidak dialokasikan ke kategori dan tidak digabung dengan
+      // UNCLASSIFIED milik APP_USAGE.
+      final appBytesByDay = <DateTime, int>{};
+
+      for (final record in loadedRecords) {
+        if (record.networkType == NetworkType.wifi ||
+            record.recordScope != UsageRecordScope.appUsage) {
+          continue;
+        }
+
+        final day = dateOnly(record.periodStartAt);
+        appBytesByDay.update(
+          day,
+          (value) => value + record.totalBytes,
+          ifAbsent: () => record.totalBytes,
+        );
+      }
+
+      var unmappedDevice = 0;
+
+      for (final entry in effectiveRecords.entries) {
+        final deviceBytes = entry.value
+            .where(
+              (record) => record.recordScope == UsageRecordScope.deviceTotal,
+            )
+            .fold<int>(0, (sum, record) => sum + record.totalBytes);
+
+        if (deviceBytes <= 0) continue;
+
+        final difference = deviceBytes - (appBytesByDay[entry.key] ?? 0);
+
+        if (difference > 0) {
+          unmappedDevice += difference;
         }
       }
 
@@ -355,7 +452,8 @@ class DashboardProvider extends ChangeNotifier {
       records = loadedRecords;
 
       categoryUsage = loadedCategoryUsage;
-      unclassifiedBytes = unallocated;
+      unclassifiedAppBytes = unclassifiedApp;
+      unmappedDeviceBytes = unmappedDevice;
 
       dataLimit = loadedDataLimit;
       dailyUsage = loadedDaily;

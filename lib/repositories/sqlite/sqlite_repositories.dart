@@ -1642,6 +1642,37 @@ class SqliteSettingsRepository implements SettingsRepository {
   }
 
   @override
+  Future<void> updateNotifications(
+    String userId, {
+    required bool enabled,
+    required DateTime updatedAt,
+  }) async {
+    final database = await h.database;
+
+    final updated = await database.update(
+      'user_settings',
+      {
+        'notifications_enabled': enabled ? 1 : 0,
+        'updated_at': timeToIso(updatedAt),
+      },
+      where: 'user_id = ?',
+      whereArgs: [userId],
+    );
+
+    // Pengguna yang belum pernah menyimpan pengaturan mendapat baris bawaan.
+    if (updated > 0) return;
+
+    await database.insert('user_settings', {
+      'user_id': userId,
+      'theme_mode': 'LIGHT',
+      'palette_key': 'TEAL',
+      'notifications_enabled': enabled ? 1 : 0,
+      'timezone_id': 'UTC',
+      'updated_at': timeToIso(updatedAt),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  @override
   Future<void> delete(String userId) async {
     await (await h.database).delete(
       'user_settings',

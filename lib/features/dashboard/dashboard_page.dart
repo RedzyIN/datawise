@@ -18,6 +18,7 @@ import '../../models/models.dart';
 import '../alerts/alert_history_page.dart';
 import '../alerts/alert_provider.dart';
 import '../auth/auth_provider.dart';
+import '../usage_breakdown/usage_breakdown_sheet.dart';
 import 'dashboard_provider.dart';
 
 /// Frame Figma berukuran ±290 lebar; skala ini menyesuaikannya ke layar ponsel.
@@ -109,7 +110,8 @@ class _DashView {
     this.todayTone = DataLimitTone.unknown,
     required this.packageForNav,
     this.categories = const [],
-    this.unclassifiedBytes = 0,
+    this.unclassifiedAppBytes = 0,
+    this.unmappedDeviceBytes = 0,
     this.overQuota = false,
     this.planUnavailable = false,
     this.categoriesComplete = false,
@@ -135,7 +137,12 @@ class _DashView {
   final String targetText, averageText, tooltip;
   final DataPackage packageForNav;
   final List<_Cat> categories;
-  final int unclassifiedBytes;
+
+  /// Byte APP_USAGE yang tidak memiliki kategori valid.
+  final int unclassifiedAppBytes;
+
+  /// Selisih DEVICE_TOTAL terhadap APP_USAGE; bukan bagian kategori.
+  final int unmappedDeviceBytes;
   final bool overQuota;
   final bool planUnavailable;
   final bool categoriesComplete;
@@ -337,7 +344,8 @@ class _DashView {
         for (final c in d.categoryUsage)
           _Cat(c.category.categoryName, c.usedBytes, c.capacityBytes),
       ],
-      unclassifiedBytes: d.unclassifiedBytes,
+      unclassifiedAppBytes: d.unclassifiedAppBytes,
+      unmappedDeviceBytes: d.unmappedDeviceBytes,
       categoriesComplete: true,
       planUnavailable: d.planUnavailable,
       packageForNav: pkg,
@@ -554,7 +562,7 @@ class _DashboardPageState extends State<DashboardPage>
             child: _SecondaryButton(
               icon: Icons.apps_rounded,
               label: 'Detail Aplikasi',
-              onTap: () => _showAppDetails(context, d, v.packageForNav),
+              onTap: () => _showAppDetails(v.packageForNav),
             ),
           ),
         ],
@@ -655,56 +663,21 @@ class _DashboardPageState extends State<DashboardPage>
 
   // ------------------------------------------------------------ dialog
 
-  // Fitur minggu 3 (Application Usage Breakdown) sengaja BELUM diaktifkan.
-  // `UsageBreakdownSheet`/`UsageBreakdownProvider` tetap tersimpan dan teruji,
-  // tetapi tombol ini belum membukanya karena:
-  // 1. Pembacaan per aplikasi belum diverifikasi pada perangkat nyata.
-  // 2. Sinkronisasi per aplikasi mengalokasikan APP_USAGE ke MAIN tanpa aturan
-  //    klasifikasi, sehingga belum layak dipakai sebagai data kuota.
-  // Aktifkan kembali setelah syarat di PRD/instruksi integrasi terpenuhi.
-  void _showAppDetails(
-    BuildContext context,
-    DashboardProvider d,
-    DataPackage package,
-  ) {
-    showModalBottomSheet<void>(
+  /// Membuka rincian pemakaian per aplikasi (fitur Application Usage
+  /// Breakdown). Datanya berasal dari `usage_records` hasil sinkronisasi
+  /// NetworkStats Android dan dibaca lewat UsageBreakdownProvider.
+  Future<void> _showAppDetails(DataPackage package) async {
+    await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: AppPageColors.of(context).surface,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Detail Aplikasi',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800,
-                  color: pal.ink,
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                'Rincian penggunaan per aplikasi akan tersedia setelah klasifikasi pemakaian terhubung.',
-                style: TextStyle(color: pal.muted, fontSize: 12),
-              ),
-              const SizedBox(height: 12),
-              _InfoRow(
-                label: 'Status pemantauan',
-                value: d.hasPermission ? 'Aktif' : 'Izin belum diberikan',
-              ),
-              const _InfoRow(
-                label: 'Sumber data',
-                value: 'Statistik perangkat',
-              ),
-            ],
-          ),
-        ),
-      ),
+      backgroundColor: AppPageColors.of(context).background,
+      builder: (_) => UsageBreakdownSheet(package: package),
     );
+
+    // Sinkronisasi di dalam sheet dapat menambah APP_USAGE baru, jadi angka
+    // Dashboard dibaca ulang agar kategori dan rincian aplikasi konsisten.
+    if (mounted) await _load();
   }
 
   void _showStatus(BuildContext context, DashboardProvider d, bool preview) {
@@ -1597,17 +1570,17 @@ class _CategoryCard extends StatelessWidget {
             ),
             SizedBox(height: _u(8)),
           ],
-          if (v.unclassifiedBytes > 0) ...[
+          if (v.unclassifiedAppBytes > 0) ...[
             Row(
               children: [
                 Expanded(
                   child: Text(
-                    'Belum terklasifikasi',
+                    'Aplikasi belum terklasifikasi',
                     style: TextStyle(color: pal.muted, fontSize: _u(8.5)),
                   ),
                 ),
                 Text(
-                  _gb(v.unclassifiedBytes),
+                  _gb(v.unclassifiedAppBytes),
                   style: TextStyle(
                     color: pal.ink,
                     fontSize: _u(8),
@@ -1618,9 +1591,36 @@ class _CategoryCard extends StatelessWidget {
             ),
             SizedBox(height: _u(2)),
             Text(
-              'Pemakaian ini belum memiliki alokasi kategori sehingga tidak '
-              'dibebankan ke kategori mana pun, tetapi tetap dihitung pada '
-              'pemakaian paket di atas.',
+              'Pemakaian aplikasi ini belum memiliki kategori valid sehingga '
+              'tidak dibebankan ke kategori mana pun, tetapi tetap dihitung '
+              'pada pemakaian paket di atas.',
+              style: TextStyle(color: pal.muted, fontSize: _u(7.5)),
+            ),
+            SizedBox(height: _u(8)),
+          ],
+          if (v.unmappedDeviceBytes > 0) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Selisih perangkat dan aplikasi',
+                    style: TextStyle(color: pal.muted, fontSize: _u(8.5)),
+                  ),
+                ),
+                Text(
+                  _gb(v.unmappedDeviceBytes),
+                  style: TextStyle(
+                    color: pal.ink,
+                    fontSize: _u(8),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: _u(2)),
+            Text(
+              'Pemakaian perangkat yang tidak memiliki rincian aplikasi. '
+              'Selisih ini tidak dibebankan ke kategori mana pun.',
               style: TextStyle(color: pal.muted, fontSize: _u(7.5)),
             ),
             SizedBox(height: _u(8)),
@@ -1717,7 +1717,7 @@ class _PrimaryButton extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.w700, fontSize: _u(10.5)),
         ),
         style: FilledButton.styleFrom(
-          backgroundColor: pal.primaryDeep,
+          backgroundColor: pal.primary,
           foregroundColor: pal.onPrimary,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(_u(10)),
@@ -1798,38 +1798,6 @@ class _ErrorState extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
-  final String label, value;
-
-  @override
-  Widget build(BuildContext context) {
-    final pal = AppPageColors.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(color: pal.muted, fontSize: 11),
-            ),
-          ),
-          Text(
-            value,
-            style: TextStyle(
-              color: pal.ink,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
       ),
     );
   }

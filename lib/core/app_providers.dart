@@ -9,8 +9,10 @@ import '../features/alerts/alert_provider.dart';
 import '../features/auth/auth_provider.dart';
 import '../features/dashboard/dashboard_provider.dart';
 import '../features/data_limit/data_limit_provider.dart';
+import '../features/package/classification_rule_provider.dart';
 import '../features/package/package_provider.dart';
 import '../features/package/quota_category_provider.dart';
+import '../features/settings/settings_provider.dart';
 import '../features/usage_breakdown/usage_breakdown_provider.dart';
 import '../features/usage_monitor/usage_provider.dart';
 
@@ -20,8 +22,10 @@ import '../services/alert_service.dart';
 import '../services/alert_simulation.dart';
 import '../services/app_usage_sync_service.dart';
 import '../services/auth_service.dart';
+import '../services/data_export_service.dart';
 import '../services/data_limit_service.dart';
 import '../services/local_notification_service.dart';
+import '../services/usage/usage_classification_service.dart';
 import '../services/usage_breakdown_service.dart';
 import '../services/usage_service.dart';
 import '../services/usage_sync_service.dart';
@@ -73,14 +77,34 @@ List<SingleChildWidget> buildAppProviders() {
     usageRepo,
   );
 
+  // Satu jalur klasifikasi untuk produksi: aturan dan kategori dibaca dari
+  // repository yang sama dengan yang dipakai UI, bukan salinan lokal.
+  final UsageClassificationService usageClassificationService =
+      UsageClassificationService(
+        ruleRepository: ruleRepo,
+        categoryRepository: categoryRepo,
+        usageRepository: usageRepo,
+      );
+
   final AppUsageSyncService appUsageSyncService = AppUsageSyncService(
     usageService,
     usageRepo,
-    categoryRepo,
+    usageClassificationService,
   );
 
   final UsageBreakdownService usageBreakdownService = UsageBreakdownService(
     usageRepo,
+  );
+
+  // Ekspor seluruh data lokal akun aktif (dipakai halaman Pengaturan).
+  final DataExportService dataExportService = DataExportService(
+    packageRepo,
+    categoryRepo,
+    ruleRepo,
+    usageRepo,
+    dataLimitRepo,
+    alertRepo,
+    settingsRepo,
   );
 
   return [
@@ -102,8 +126,12 @@ List<SingleChildWidget> buildAppProviders() {
     Provider<AlertSimulator>.value(value: alertSimulator),
     Provider<DataLimitService>.value(value: dataLimitService),
     Provider<UsageSyncService>.value(value: usageSyncService),
+    Provider<UsageClassificationService>.value(
+      value: usageClassificationService,
+    ),
     Provider<AppUsageSyncService>.value(value: appUsageSyncService),
     Provider<UsageBreakdownService>.value(value: usageBreakdownService),
+    Provider<DataExportService>.value(value: dataExportService),
 
     // ChangeNotifier Provider
     ChangeNotifierProvider<AuthProvider>(
@@ -115,11 +143,18 @@ List<SingleChildWidget> buildAppProviders() {
     ChangeNotifierProvider<AlertProvider>(
       create: (_) => AlertProvider(alertRepo, packageRepo),
     ),
+    ChangeNotifierProvider<SettingsProvider>(
+      create: (_) =>
+          SettingsProvider(settingsRepo, usageService, dataExportService),
+    ),
     ChangeNotifierProvider<PackageProvider>(
       create: (_) => PackageProvider(packageRepo, usageRepo: usageRepo),
     ),
     ChangeNotifierProvider<QuotaCategoryProvider>(
       create: (_) => QuotaCategoryProvider(categoryRepo),
+    ),
+    ChangeNotifierProvider<ClassificationRuleProvider>(
+      create: (_) => ClassificationRuleProvider(ruleRepo),
     ),
     ChangeNotifierProvider<UsageProvider>(
       create: (_) => UsageProvider(
@@ -138,7 +173,9 @@ List<SingleChildWidget> buildAppProviders() {
         categoryRepo: categoryRepo,
         dataLimitRepo: dataLimitRepo,
         dataLimitService: dataLimitService,
-        syncService: usageSyncService,
+        // Dashboard dan Breakdown memakai jalur sinkronisasi yang sama agar
+        // APP_USAGE selalu terklasifikasi sebelum kategori dibaca.
+        syncService: appUsageSyncService,
       ),
     ),
     ChangeNotifierProvider<DataLimitProvider>(

@@ -18,6 +18,9 @@ class PackageProvider extends ChangeNotifier {
   List<DataPackage> _packages = [];
   final Map<String, int> _usedBytesByPackage = {};
 
+  /// Pemakaian yang sudah terjadi sebelum paket dicatat di DATAWISE.
+  final Map<String, int> _initialUsedByPackage = {};
+
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -33,6 +36,12 @@ class PackageProvider extends ChangeNotifier {
     return _usedBytesByPackage[packageId] ?? 0;
   }
 
+  /// Baseline "Kuota Sudah Terpakai" milik satu paket (0 jika tidak ada).
+  int initialUsedFor(String? packageId) {
+    if (packageId == null) return 0;
+    return _initialUsedByPackage[packageId] ?? 0;
+  }
+
   int remainingBytesFor(DataPackage package) {
     final remaining =
         package.advertisedTotalQuotaBytes - usedBytesFor(package.id);
@@ -46,11 +55,17 @@ class PackageProvider extends ChangeNotifier {
     if (packageId == null || repo == null) return;
 
     try {
-      final used = totalEffectiveUsageBytes(await repo.getRecords(packageId));
+      final records = await repo.getRecords(packageId);
+      final used = totalEffectiveUsageBytes(records);
+      final baseline = initialBaselineBytes(records);
 
-      if (_usedBytesByPackage[packageId] == used) return;
+      if (_usedBytesByPackage[packageId] == used &&
+          _initialUsedByPackage[packageId] == baseline) {
+        return;
+      }
 
       _usedBytesByPackage[packageId] = used;
+      _initialUsedByPackage[packageId] = baseline;
       notifyListeners();
     } catch (_) {
       // Kegagalan memuat pemakaian tidak boleh menggagalkan informasi paket.
@@ -66,9 +81,9 @@ class PackageProvider extends ChangeNotifier {
       if (packageId == null) continue;
 
       try {
-        _usedBytesByPackage[packageId] = totalEffectiveUsageBytes(
-          await repo.getRecords(packageId),
-        );
+        final records = await repo.getRecords(packageId);
+        _usedBytesByPackage[packageId] = totalEffectiveUsageBytes(records);
+        _initialUsedByPackage[packageId] = initialBaselineBytes(records);
       } catch (_) {
         // Biarkan angka lama (atau 0) jika catatan pemakaian gagal dibaca.
       }

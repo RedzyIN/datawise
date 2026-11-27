@@ -27,7 +27,7 @@ class PlannerService {
     final remainingDays = rawRemainingDays < 0 ? 0 : rawRemainingDays;
 
     final PlannerStatus status;
-    if (remainingDays == 0) {
+    if (remainingDays == 0 || package.status == PackageStatus.expired) {
       status = PlannerStatus.expired;
     } else if (todayDate.isBefore(startDate)) {
       status = PlannerStatus.notStarted;
@@ -37,8 +37,13 @@ class PlannerService {
       status = PlannerStatus.normal;
     }
 
-    // Paket kedaluwarsa tidak memiliki target harian (PRD 4.4).
-    final dailyTarget = remainingDays == 0 ? null : remaining / remainingDays;
+    // Target hanya dihitung untuk paket yang sedang berjalan atau depleted.
+    // Paket kedaluwarsa tidak punya sisa hari (PRD 4.4), dan paket yang belum
+    // mulai tidak boleh menampilkan target aktif yang menyesatkan.
+    final dailyTarget =
+        status == PlannerStatus.expired || status == PlannerStatus.notStarted
+        ? null
+        : remaining / remainingDays;
     final weeklyDays = remainingDays < 7 ? remainingDays : 7;
     final weeklyTarget = dailyTarget == null ? null : dailyTarget * weeklyDays;
 

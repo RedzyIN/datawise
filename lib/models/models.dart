@@ -13,3 +13,4 @@ export 'usage_allocation.dart';
 export 'usage_reading.dart';
 export 'usage_record.dart';
 export 'user_setting.dart';
+export 'theme_palette.dart';

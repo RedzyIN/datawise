@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/routes.dart';
 import '../../features/auth/auth_provider.dart';
 import '../../models/models.dart';
+import 'classification_rules_page.dart';
 import 'package_format.dart';
 import 'package_provider.dart';
 import 'package_theme.dart';
@@ -494,8 +495,11 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
     Color? fg,
   }) {
     final pal = PkgPalette.of(context);
-    final background = bg ?? pal.chip;
-    final foreground = fg ?? pal.primary;
+
+    // Warna default mengikuti warna utama palet aplikasi.
+    // Warna khusus tetap bisa diberikan melalui parameter bg dan fg.
+    final background = bg ?? pal.primary;
+    final foreground = fg ?? pal.onPrimary;
 
     return SizedBox(
       width: double.infinity,
@@ -929,6 +933,19 @@ class _PackageDetailPageState extends State<PackageDetailPage> {
                 ),
                 icon: const Icon(Icons.notifications_active_outlined),
                 label: const Text('Batas Penggunaan Harian'),
+              ),
+              const SizedBox(height: 10),
+
+              // Aturan klasifikasi aplikasi (Usage Classification)
+              OutlinedButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ClassificationRulesPage(package: package),
+                  ),
+                ),
+                icon: const Icon(Icons.rule_folder_outlined),
+                label: const Text('Aturan Klasifikasi Aplikasi'),
               ),
               const SizedBox(height: 20),
 

@@ -15,7 +15,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
-        android:label="datawise"
+        android:label="DataWise"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
