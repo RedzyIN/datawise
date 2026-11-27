@@ -9,6 +9,7 @@ import '../features/alerts/alert_provider.dart';
 import '../features/auth/auth_provider.dart';
 import '../features/dashboard/dashboard_provider.dart';
 import '../features/data_limit/data_limit_provider.dart';
+import '../features/package/classification_rule_provider.dart';
 import '../features/package/package_provider.dart';
 import '../features/package/quota_category_provider.dart';
 import '../features/settings/settings_provider.dart';
@@ -151,6 +152,9 @@ List<SingleChildWidget> buildAppProviders() {
     ),
     ChangeNotifierProvider<QuotaCategoryProvider>(
       create: (_) => QuotaCategoryProvider(categoryRepo),
+    ),
+    ChangeNotifierProvider<ClassificationRuleProvider>(
+      create: (_) => ClassificationRuleProvider(ruleRepo),
     ),
     ChangeNotifierProvider<UsageProvider>(
       create: (_) => UsageProvider(

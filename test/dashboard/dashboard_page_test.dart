@@ -2,12 +2,14 @@ import 'package:datawise/features/alerts/alert_provider.dart';
 import 'package:datawise/features/auth/auth_provider.dart';
 import 'package:datawise/features/dashboard/dashboard_page.dart';
 import 'package:datawise/features/dashboard/dashboard_provider.dart';
+import 'package:datawise/features/usage_breakdown/usage_breakdown_provider.dart';
 import 'package:datawise/models/models.dart';
 import 'package:datawise/repositories/in_memory/in_memory_repositories.dart';
 import 'package:datawise/repositories/repositories.dart';
 import 'package:datawise/services/alert_service.dart';
 import 'package:datawise/services/app_usage_sync_service.dart';
 import 'package:datawise/services/usage/usage_classification_service.dart';
+import 'package:datawise/services/usage_breakdown_service.dart';
 import 'package:datawise/services/usage_service.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -112,11 +114,14 @@ Widget _app(
   AuthProvider auth,
   DashboardProvider dashboard, {
   AlertProvider? alerts,
+  UsageBreakdownProvider? breakdown,
 }) {
   return MultiProvider(
     providers: [
       ChangeNotifierProvider<AuthProvider>.value(value: auth),
       ChangeNotifierProvider<DashboardProvider>.value(value: dashboard),
+      if (breakdown != null)
+        ChangeNotifierProvider<UsageBreakdownProvider>.value(value: breakdown),
       ChangeNotifierProvider<AlertProvider>(
         create: (_) =>
             alerts ??
@@ -505,6 +510,110 @@ void main() {
     expect(chart.data.barTouchData.enabled, isTrue);
     expect(chart.data.barGroups.last.barRods.single.toY, 900000000);
 
+    dashboard.dispose();
+  });
+
+  testWidgets('tombol Detail Aplikasi membuka rincian penggunaan aplikasi', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(412, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final packageRepo = InMemoryPackageRepository();
+    final categoryRepo = InMemoryQuotaCategoryRepository(packageRepo);
+    final usageRepo = InMemoryUsageRepository(packageRepo, categoryRepo);
+
+    final now = DateTime.now();
+    final start = dateOnly(now);
+
+    final packageId = await packageRepo.add(
+      DataPackage(
+        userId: 'u1',
+        packageName: 'Paket Bulanan 30 GB',
+        operatorName: 'Telkomsel',
+        advertisedTotalQuotaBytes: 30000000000,
+        startDate: dateOnly(now.subtract(const Duration(days: 5))),
+        endDate: dateOnly(now.add(const Duration(days: 25))),
+        status: PackageStatus.active,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+
+    await _addDeviceUsage(usageRepo, packageId, now, 900000000);
+
+    // APP_USAGE yang sudah tersimpan dari sinkronisasi sebelumnya.
+    final main = (await categoryRepo.getByPackage(packageId)).first;
+
+    await usageRepo.upsertRecordWithAllocations(
+      UsageRecord(
+        packageId: packageId,
+        recordScope: UsageRecordScope.appUsage,
+        appUid: 101,
+        appPackageName: 'com.instagram.android',
+        appName: 'Instagram',
+        networkType: NetworkType.mobile,
+        periodStartAt: start,
+        periodEndAt: start.add(const Duration(days: 1)),
+        rxBytes: 3000000,
+        txBytes: 0,
+        source: UsageSource.android,
+        sourceKey: 'android_app_test_instagram',
+        recordedAt: now,
+      ),
+      (recordId) => [
+        UsageAllocation(
+          packageId: packageId,
+          usageRecordId: recordId,
+          quotaCategoryId: main.id,
+          allocatedBytes: 3000000,
+          allocationMethod: AllocationMethod.mainFallback,
+          createdAt: now,
+        ),
+      ],
+    );
+
+    final usageService = _Usage(false);
+
+    final dashboard = DashboardProvider(
+      packageRepo,
+      usageRepo,
+      usageService,
+      _Alert(),
+      categoryRepo: categoryRepo,
+      syncService: _appUsageSync(
+        packageRepo,
+        categoryRepo,
+        usageRepo,
+        usageService,
+      ),
+    );
+
+    final breakdown = UsageBreakdownProvider(
+      UsageBreakdownService(usageRepo),
+      _appUsageSync(packageRepo, categoryRepo, usageRepo, usageService),
+      usageService,
+    );
+
+    await tester.pumpWidget(
+      _app(_FakeAuth(user), dashboard, breakdown: breakdown),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Detail Aplikasi'));
+    await tester.pumpAndSettle();
+
+    // Rincian nyata dari usage_records, bukan teks placeholder lama.
+    expect(find.text('Instagram'), findsOneWidget);
+    expect(find.text('com.instagram.android'), findsOneWidget);
+    expect(find.text('3,0 MB'), findsWidgets);
+    expect(find.textContaining('setelah klasifikasi'), findsNothing);
+
+    // Usage Access belum diberikan pada service palsu ini.
+    expect(find.text('Izin Usage Access belum diberikan'), findsOneWidget);
+    expect(find.text('Beri Izin Usage Access'), findsOneWidget);
+
+    breakdown.dispose();
     dashboard.dispose();
   });
 }

@@ -76,3 +76,25 @@ int totalEffectiveUsageBytes(Iterable<UsageRecord> records) {
 
   return total;
 }
+
+/// Byte pemakaian yang sudah terjadi sebelum DATAWISE mulai mencatat paket.
+///
+/// Baseline "Kuota Sudah Terpakai" disimpan sebagai satu catatan MANUAL_TOTAL
+/// dengan `source_key` `initial_<packageId>` (lihat SqlitePackageRepository),
+/// sehingga tidak memerlukan kolom database baru dan tidak ditambahkan
+/// berulang setiap kali paket diedit.
+const String initialUsageSourceKeyPrefix = 'initial_';
+
+int initialBaselineBytes(Iterable<UsageRecord> records) {
+  var total = 0;
+
+  for (final record in records) {
+    if (record.sourceKey?.startsWith(initialUsageSourceKeyPrefix) != true) {
+      continue;
+    }
+
+    total += record.totalBytes;
+  }
+
+  return total;
+}

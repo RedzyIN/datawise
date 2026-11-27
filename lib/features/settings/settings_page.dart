@@ -89,6 +89,24 @@ class _SettingsPageState extends State<SettingsPage> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _openInternetSettings(
+    BuildContext context,
+    SettingsProvider settings,
+  ) async {
+    await settings.openInternetSettings();
+
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Membuka pengaturan internet Android. Kembali ke DATAWISE setelah '
+          'selesai.',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -226,6 +244,18 @@ class _SettingsPageState extends State<SettingsPage> {
 
         // SLOT-C: izin penggunaan data
         const UsagePermissionTile(),
+
+        // Internet Settings Shortcut: fungsi Android sudah tersedia di
+        // UsageService.openInternetSettings().
+        ListTile(
+          leading: const Icon(Icons.wifi),
+          title: const Text('Pengaturan Internet'),
+          subtitle: const Text(
+            'Buka pengaturan jaringan dan data seluler Android',
+          ),
+          trailing: const Icon(Icons.open_in_new),
+          onTap: () => _openInternetSettings(context, settings),
+        ),
 
         // Preferensi notifikasi aplikasi (berbeda dengan izin Android).
         SwitchListTile(

@@ -5,14 +5,20 @@ import android.app.usage.NetworkStats
 import android.app.usage.NetworkStatsManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.net.ConnectivityManager
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.provider.Settings
+import android.util.Base64
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 
 // PEMILIK: Anggota C. KONTRAK BEKU #5 - channel 'datawise/usage'.
@@ -52,6 +58,13 @@ class UsageChannel(private val context: Context) : MethodChannel.MethodCallHandl
                 val end = call.argument<Number>("endMillis")?.toLong() ?: 0L
                 executor.execute {
                     val map = readAppUsage(start, end)
+                    main.post { result.success(map) }
+                }
+            }
+            "getAppIcons" -> {
+                val names = call.argument<List<String>>("packageNames") ?: emptyList()
+                executor.execute {
+                    val map = readIcons(names)
                     main.post { result.success(map) }
                 }
             }
@@ -155,6 +168,73 @@ class UsageChannel(private val context: Context) : MethodChannel.MethodCallHandl
         } catch (e: Exception) {
             out("error", emptyList(), e.message ?: "Gagal membaca statistik aplikasi.")
         }
+    }
+
+    // Ukuran ikon yang dikirim ke Flutter. Cukup tajam untuk kartu 40dp pada
+    // layar kerapatan tinggi tanpa membengkakkan payload MethodChannel.
+    private val ICON_SIZE_PX = 128
+
+    // Cache ikon per package name: PackageManager dan encode PNG hanya dilakukan
+    // sekali per aplikasi selama proses hidup, sehingga membuka daftar berulang
+    // tidak mengambil ikon yang sama terus-menerus.
+    private val iconCache = HashMap<String, String>()
+
+    // Launcher icon asli per package name. Package yang tidak terlihat karena
+    // batas package visibility Android 11+ tidak menghasilkan entri sehingga
+    // Flutter memakai ikon fallback DATAWISE. Tidak ada QUERY_ALL_PACKAGES.
+    private fun readIcons(packageNames: List<String>): Map<String, String> {
+        val out = LinkedHashMap<String, String>()
+        val pm = context.packageManager
+
+        for (name in packageNames) {
+            if (name.isBlank()) continue
+
+            synchronized(iconCache) { iconCache[name] }?.let {
+                out[name] = it
+                continue
+            }
+
+            val encoded = try {
+                encodeIcon(pm.getApplicationIcon(name))
+            } catch (_: Exception) {
+                null
+            }
+
+            if (encoded != null) {
+                synchronized(iconCache) { iconCache[name] = encoded }
+                out[name] = encoded
+            }
+        }
+
+        return out
+    }
+
+    private fun encodeIcon(drawable: Drawable): String {
+        val bitmap = drawableToBitmap(drawable)
+        val scaled = if (bitmap.width == ICON_SIZE_PX && bitmap.height == ICON_SIZE_PX) {
+            bitmap
+        } else {
+            Bitmap.createScaledBitmap(bitmap, ICON_SIZE_PX, ICON_SIZE_PX, true)
+        }
+
+        val stream = ByteArrayOutputStream()
+        scaled.compress(Bitmap.CompressFormat.PNG, 100, stream)
+
+        return Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
+    }
+
+    private fun drawableToBitmap(drawable: Drawable): Bitmap {
+        val bitmapDrawable = drawable as? BitmapDrawable
+        if (bitmapDrawable?.bitmap != null) return bitmapDrawable.bitmap
+
+        val bitmap = Bitmap.createBitmap(
+            ICON_SIZE_PX, ICON_SIZE_PX, Bitmap.Config.ARGB_8888
+        )
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+
+        return bitmap
     }
 
     // Pemetaan UID ke aplikasi. Android 11+ membatasi package visibility, jadi
