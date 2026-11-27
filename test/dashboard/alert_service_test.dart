@@ -222,6 +222,41 @@ void main() {
 
       expect(sink.shown, isEmpty);
     });
+
+    test('dua hari sebelum berakhir tidak memicu expiring1d', () async {
+      await service.evaluateAndNotify(
+        'u',
+        pkg(end: DateTime(2026, 11, 19)),
+        plan(),
+      );
+
+      expect(sink.shown, isEmpty);
+      expect(await alerts.getByPackage('package-1'), isEmpty);
+    });
+
+    test('tepat pada tanggal berakhir tidak memicu expiring1d', () async {
+      await service.evaluateAndNotify(
+        'u',
+        pkg(end: DateTime(2026, 11, 17)),
+        plan(),
+      );
+
+      expect(sink.shown, isEmpty);
+      expect(await alerts.getByPackage('package-1'), isEmpty);
+    });
+
+    test('setelah tanggal berakhir tidak memicu expiring1d', () async {
+      now = DateTime(2026, 11, 18);
+
+      await service.evaluateAndNotify(
+        'u',
+        pkg(end: DateTime(2026, 11, 17)),
+        plan(status: PlannerStatus.expired),
+      );
+
+      expect(sink.shown, isEmpty);
+      expect(await alerts.getByPackage('package-1'), isEmpty);
+    });
   });
 
   group('Dedupe key', () {
