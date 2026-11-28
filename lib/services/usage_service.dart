@@ -7,7 +7,9 @@ abstract class UsageService {
 
   Future<void> openUsageAccessSettings();
 
-  Future<void> openInternetSettings();
+  /// Membuka pengaturan internet Android. `false` berarti tidak ada halaman
+  /// pengaturan yang berhasil dibuka pada perangkat ini.
+  Future<bool> openInternetSettings();
 
   Future<UsageReading> readMobileUsage(DateTime start, DateTime end);
 
@@ -105,10 +107,16 @@ class UsageServiceImpl implements UsageService {
   }
 
   @override
-  Future<void> openInternetSettings() async {
+  Future<bool> openInternetSettings() async {
     try {
-      await _channel.invokeMethod('openInternetSettings');
-    } catch (_) {}
+      return await _channel.invokeMethod<bool>('openInternetSettings') ?? false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    } catch (_) {
+      return false;
+    }
   }
 
   @override

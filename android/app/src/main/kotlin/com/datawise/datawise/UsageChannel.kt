@@ -34,16 +34,11 @@ class UsageChannel(private val context: Context) : MethodChannel.MethodCallHandl
         when (call.method) {
             "hasUsagePermission" -> result.success(hasPermission())
             "openUsageAccessSettings" -> {
-                openSettings(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS), null)
-                result.success(null)
-            }
-            "openInternetSettings" -> {
-                openSettings(
-                    Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY),
-                    Intent(Settings.ACTION_WIRELESS_SETTINGS)
+                result.success(
+                    openSettings(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS), null)
                 )
-                result.success(null)
             }
+            "openInternetSettings" -> result.success(openInternetSettings())
             "getMobileUsage" -> {
                 val start = call.argument<Number>("startMillis")?.toLong() ?: 0L
                 val end = call.argument<Number>("endMillis")?.toLong() ?: 0L
@@ -293,16 +288,37 @@ class UsageChannel(private val context: Context) : MethodChannel.MethodCallHandl
         }
     }
 
-    private fun openSettings(primary: Intent, fallback: Intent?) {
+    // Membuka halaman pengaturan tanpa mengubah jaringan apa pun. Hasil Boolean
+    // dikirim ke Flutter supaya UI bisa menampilkan pesan gagal, bukan diam-diam.
+    // minSdk 29 sehingga panel internet selalu tersedia, fallback tetap dipakai
+    // untuk perangkat/OEM yang menonaktifkan panel tersebut.
+    private fun openInternetSettings(): Boolean {
+        if (
+            openSettings(
+                Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY),
+                Intent(Settings.ACTION_WIRELESS_SETTINGS)
+            )
+        ) {
+            return true
+        }
+
+        return openSettings(Intent(Settings.ACTION_SETTINGS), null)
+    }
+
+    private fun openSettings(primary: Intent, fallback: Intent?): Boolean {
         try {
             primary.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(primary)
-        } catch (e: Exception) {
-            if (fallback != null) {
-                try {
-                    fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(fallback)
-                } catch (_: Exception) { }
+            return true
+        } catch (_: Exception) {
+            if (fallback == null) return false
+
+            return try {
+                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(fallback)
+                true
+            } catch (_: Exception) {
+                false
             }
         }
     }

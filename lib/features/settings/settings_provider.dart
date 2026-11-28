@@ -145,8 +145,8 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   /// Membuka pengaturan internet Android melalui UsageService yang sudah
-  /// tersedia (MethodChannel `datawise/usage`).
-  Future<void> openInternetSettings() => _usageService.openInternetSettings();
+  /// tersedia (MethodChannel `datawise/usage`). `false` berarti gagal dibuka.
+  Future<bool> openInternetSettings() => _usageService.openInternetSettings();
 
   /// Membuat dan membagikan backup milik akun aktif.
   Future<void> exportData() async {

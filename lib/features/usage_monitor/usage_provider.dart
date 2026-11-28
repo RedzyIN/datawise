@@ -197,14 +197,24 @@ class UsageProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> openInternetSettings() async {
+  /// Membuka pengaturan internet Android.
+  ///
+  /// Mengembalikan `false` bila halaman pengaturan tidak dapat dibuka, sehingga
+  /// UI dapat menampilkan [errorMessage] lewat SnackBar.
+  Future<bool> openInternetSettings() async {
+    var opened = false;
+
     try {
-      await _service.openInternetSettings();
-      _errorMessage = null;
+      opened = await _service.openInternetSettings();
+      _errorMessage = opened
+          ? null
+          : 'Pengaturan jaringan Android tidak dapat dibuka pada perangkat ini.';
     } catch (e) {
       _handleError(e);
     }
 
     notifyListeners();
+
+    return opened;
   }
 }

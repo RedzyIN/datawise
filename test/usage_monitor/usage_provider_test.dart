@@ -10,6 +10,10 @@ class FakeUsageService implements UsageService {
   bool permissionGranted = false;
   int refreshCallCount = 0;
 
+  /// Meniru hasil pembukaan pengaturan internet Android.
+  bool internetSettingsAvailable = true;
+  int internetSettingsCallCount = 0;
+
   UsageReading? nextReading;
 
   @override
@@ -21,7 +25,11 @@ class FakeUsageService implements UsageService {
   Future<void> openUsageAccessSettings() async {}
 
   @override
-  Future<void> openInternetSettings() async {}
+  Future<bool> openInternetSettings() async {
+    internetSettingsCallCount++;
+
+    return internetSettingsAvailable;
+  }
 
   @override
   Future<UsageReading> readMobileUsage(DateTime start, DateTime end) async {
@@ -192,6 +200,28 @@ void main() {
       expect(provider.lastReading!.status, UsageReadStatus.permissionDenied);
       expect(provider.errorMessage, isNotNull);
       expect(provider.isLoading, false);
+    });
+  });
+
+  group('UsageProvider - Pintasan Pengaturan Internet', () {
+    test('pengaturan berhasil dibuka tanpa pesan galat', () async {
+      fakeService.internetSettingsAvailable = true;
+
+      final opened = await provider.openInternetSettings();
+
+      expect(opened, isTrue);
+      expect(fakeService.internetSettingsCallCount, 1);
+      expect(provider.errorMessage, isNull);
+    });
+
+    test('pengaturan gagal dibuka memberi pesan galat untuk SnackBar', () async {
+      fakeService.internetSettingsAvailable = false;
+
+      final opened = await provider.openInternetSettings();
+
+      expect(opened, isFalse);
+      expect(provider.errorMessage, isNotNull);
+      expect(provider.errorMessage, contains('tidak dapat dibuka'));
     });
   });
 

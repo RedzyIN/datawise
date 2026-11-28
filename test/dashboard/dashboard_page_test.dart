@@ -40,7 +40,7 @@ class _Usage implements UsageService {
   Future<void> openUsageAccessSettings() async {}
 
   @override
-  Future<void> openInternetSettings() async {}
+  Future<bool> openInternetSettings() async => true;
 
   @override
   Future<UsageReading> readMobileUsage(DateTime start, DateTime end) async {
